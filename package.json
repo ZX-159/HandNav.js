@@ -1,0 +1,37 @@
+{
+  "name": "handnav-js",
+  "version": "0.3.0",
+  "description": "Drop-in hand tracking navigation for websites and web apps using MediaPipe hand landmarks.",
+  "type": "module",
+  "main": "src/handnav.js",
+  "module": "src/handnav.js",
+  "types": "src/handnav.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/handnav.d.ts",
+      "import": "./src/handnav.js",
+      "default": "./src/handnav.js"
+    }
+  },
+  "scripts": {
+    "serve": "python3 -m http.server 8080",
+    "check": "node --check src/handnav.js",
+    "deploy:cloudflare": "npx wrangler deploy",
+    "deploy:pages": "npx wrangler pages deploy . --project-name=handnav-js-demo"
+  },
+  "keywords": [
+    "hand-tracking",
+    "gesture",
+    "navigation",
+    "mediapipe",
+    "webcam",
+    "accessibility"
+  ],
+  "license": "MIT",
+  "files": [
+    "src",
+    "demo",
+    "README.md",
+    "LICENSE"
+  ]
+}
