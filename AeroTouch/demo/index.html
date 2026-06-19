@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HandNav.js Advanced Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #060a13;
+      --panel: rgba(255,255,255,.08);
+      --panel-strong: rgba(255,255,255,.13);
+      --line: rgba(255,255,255,.14);
+      --text: #f4f8ff;
+      --muted: #9fb0cc;
+      --accent: #3a86ff;
+      --accent2: #7c3aed;
+      --pink: #ff4d6d;
+      --green: #55d6be;
+      --yellow: #ffd166;
+      --radius: 28px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(58,134,255,.40), transparent 30rem),
+        radial-gradient(circle at 85% 20%, rgba(124,58,237,.28), transparent 30rem),
+        radial-gradient(circle at 60% 100%, rgba(85,214,190,.13), transparent 30rem),
+        var(--bg);
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), transparent 70%);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(6,10,19,.78);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; letter-spacing: -.03em; }
+    .badge { color: #cfe3ff; border: 1px solid var(--line); background: rgba(255,255,255,.08); padding: 5px 10px; border-radius: 999px; font-size: .78rem; }
+    .controls { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+    button, a.button, input, textarea {
+      font: inherit;
+    }
+    button, a.button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.10);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 800;
+      transition: transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    button:hover, a.button:hover, .handnav-hover {
+      transform: translateY(-1px) scale(1.025);
+      background: rgba(58,134,255,.23) !important;
+      border-color: rgba(58,134,255,.85) !important;
+      box-shadow: 0 10px 35px rgba(58,134,255,.18);
+    }
+    button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; }
+    button.danger { background: rgba(255,77,109,.20); }
+    main { width: min(1220px, calc(100% - 32px)); margin: 0 auto; position: relative; z-index: 1; }
+    .hero { min-height: 74vh; display: grid; grid-template-columns: 1.15fr .85fr; align-items: center; gap: 28px; padding: 58px 0; }
+    h1 { margin: 0 0 18px; font-size: clamp(2.7rem, 7vw, 7.2rem); line-height: .86; letter-spacing: -.08em; }
+    h2 { font-size: clamp(1.7rem, 3vw, 2.6rem); margin: 0 0 12px; letter-spacing: -.045em; }
+    h3 { margin: 0 0 10px; }
+    p { color: var(--muted); line-height: 1.7; }
+    .lede { font-size: clamp(1.05rem, 1.7vw, 1.35rem); max-width: 820px; }
+    .panel, .hero-card, .mini-card, .play-card {
+      background: linear-gradient(180deg, var(--panel), rgba(255,255,255,.045));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 28px 90px rgba(0,0,0,.28);
+    }
+    .hero-card { padding: 24px; }
+    .panel { padding: clamp(20px, 3vw, 34px); margin: 28px 0; }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+    .mini-card { padding: 16px; min-height: 96px; }
+    .label { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 7px; }
+    .value { font-weight: 950; font-size: 1.35rem; overflow: hidden; text-overflow: ellipsis; }
+    .gesture-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+    .chip { border: 1px solid var(--line); background: rgba(255,255,255,.07); padding: 9px 12px; border-radius: 999px; color: #d9e8ff; font-weight: 800; }
+    .chip.active { background: rgba(85,214,190,.18); border-color: rgba(85,214,190,.7); color: #eafffa; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+    .play-card { padding: 22px; min-height: 210px; }
+    .toggles { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(255,255,255,.07); border: 1px solid var(--line); border-radius: 18px; padding: 12px; }
+    .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+    .scroll-box { height: 300px; overflow: auto; border-radius: 20px; border: 1px solid var(--line); background: rgba(0,0,0,.22); padding: 18px; }
+    .scroll-item { padding: 16px; border-radius: 16px; background: rgba(255,255,255,.07); margin-bottom: 12px; }
+    input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 16px; background: rgba(0,0,0,.22); color: var(--text); padding: 13px 14px; margin: 8px 0 12px; outline: none; }
+    input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(58,134,255,.14); }
+    .carousel { position: relative; overflow: hidden; min-height: 260px; border-radius: 24px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
+    .slide { display: none; padding: 32px; min-height: 260px; }
+    .slide.active { display: grid; align-content: center; }
+    .slide h3 { font-size: 2.5rem; letter-spacing: -.05em; }
+    .dots { display: flex; gap: 9px; margin: 14px 0; }
+    .dot { height: 10px; flex: 1; background: rgba(255,255,255,.13); border-radius: 99px; }
+    .dot.active { background: linear-gradient(90deg, var(--accent), var(--green)); }
+    .log { height: 230px; overflow: auto; background: rgba(0,0,0,.28); border: 1px solid var(--line); border-radius: 20px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86rem; color: #cfe4ff; }
+    .kbd { padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: #fff; }
+    .meter { height: 14px; background: rgba(255,255,255,.1); border-radius: 999px; overflow: hidden; }
+    .meter > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--green), var(--accent)); transition: width .12s linear; }
+    footer { color: var(--muted); padding: 42px 0 80px; }
+    @media (max-width: 940px) { .hero, .grid-3, .grid-2, .toggles { grid-template-columns: 1fr; } header { align-items: flex-start; flex-direction: column; } .controls { justify-content: flex-start; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span>🖐️ HandNav.js</span><span class="badge">advanced demo</span></div>
+    <div class="controls">
+      <button id="start" class="primary">Start</button>
+      <button id="pause">Pause</button>
+      <button id="resume">Resume</button>
+      <button id="toggleOverlay">Overlay: on</button>
+      <button id="toggleVideo">Camera: on</button>
+      <button id="stop" class="danger">Stop</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Control a web app with your hand.</h1>
+        <p class="lede">Test pointer navigation, pinch click, dwell click, two-finger scroll, swipes, thumbs up/down, peace sign, open palm, and fist events. Everything here is client-side and runs from your webcam.</p>
+        <div class="gesture-strip" id="gestureChips">
+          <span class="chip" data-g="point">Point</span>
+          <span class="chip" data-g="pinch">Pinch</span>
+          <span class="chip" data-g="peace">Peace / 2-finger</span>
+          <span class="chip" data-g="thumbsUp">Thumbs up</span>
+          <span class="chip" data-g="thumbsDown">Thumbs down</span>
+          <span class="chip" data-g="openPalm">Open palm</span>
+          <span class="chip" data-g="fist">Fist</span>
+        </div>
+      </div>
+      <aside class="hero-card">
+        <div class="stats">
+          <div class="mini-card"><div class="label">Status</div><div id="status" class="value">Idle</div></div>
+          <div class="mini-card"><div class="label">Current gesture</div><div id="gesture" class="value">—</div></div>
+          <div class="mini-card"><div class="label">Pointer</div><div id="pointer" class="value">—</div></div>
+          <div class="mini-card"><div class="label">Events</div><div id="events" class="value">0</div></div>
+        </div>
+        <p><span class="kbd">Pinch</span> click &nbsp; <span class="kbd">Peace</span> scroll &nbsp; <span class="kbd">Swipe</span> carousel &nbsp; <span class="kbd">Hold gestures</span> actions</p>
+        <div class="label">Dwell click progress</div>
+        <div class="meter"><div id="dwellMeter"></div></div>
+      </aside>
+    </section>
+
+    <section class="panel">
+      <h2>Developer gesture toggles</h2>
+      <p>These toggles demonstrate how developers can decide which gestures to enable in their own app.</p>
+      <div class="toggles" id="toggles">
+        <label class="toggle">Pinch click <input type="checkbox" data-opt="pinchClick" checked></label>
+        <label class="toggle">Dwell click <input type="checkbox" data-opt="dwellClick" checked></label>
+        <label class="toggle">Two-finger scroll <input type="checkbox" data-opt="twoFingerScroll" checked></label>
+        <label class="toggle">Swipe left/right <input type="checkbox" data-opt="swipe" checked></label>
+        <label class="toggle">Thumbs up <input type="checkbox" data-opt="thumbsUp" checked></label>
+        <label class="toggle">Thumbs down <input type="checkbox" data-opt="thumbsDown" checked></label>
+        <label class="toggle">Peace sign <input type="checkbox" data-opt="peace" checked></label>
+        <label class="toggle">Open palm <input type="checkbox" data-opt="openPalm" checked></label>
+        <label class="toggle">Fist <input type="checkbox" data-opt="fist" checked></label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Test subjects</h2>
+      <div class="grid-3">
+        <div class="play-card">
+          <h3>Clickable UI</h3>
+          <p>Pinch or dwell over these controls.</p>
+          <button onclick="window.demoLog('Primary button clicked')" class="primary">Primary action</button>
+          <button onclick="window.demoLog('Secondary button clicked')">Secondary</button>
+          <a class="button" href="#form-test">Jump to form</a>
+        </div>
+        <div class="play-card" id="gestureActionCard">
+          <h3>Held gesture actions</h3>
+          <p>Hold thumbs up/down, peace, open palm, or fist for about 0.7 seconds.</p>
+          <div id="heldAction" class="value">Waiting…</div>
+        </div>
+        <div class="play-card">
+          <h3>Hover target</h3>
+          <p>Move the hand cursor over this card to see hover styling. This tests <code>.handnav-hover</code>.</p>
+          <button onclick="window.demoLog('Nested target clicked')">Nested target</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel grid-2" id="form-test">
+      <div>
+        <h2>Form test</h2>
+        <p>Pinch input fields to focus. Physical keyboard still handles text entry.</p>
+        <label>Name</label>
+        <input placeholder="Pinch here to focus" />
+        <label>Message</label>
+        <textarea rows="5" placeholder="Try focusing this field with pinch"></textarea>
+        <button onclick="window.demoLog('Form submit simulated')">Submit test</button>
+      </div>
+      <div>
+        <h2>Scrollable area</h2>
+        <p>Hold peace sign / two fingers and move your hand up or down inside this area.</p>
+        <div class="scroll-box">
+          <div class="scroll-item">Scrollable test item 1</div>
+          <div class="scroll-item">Scrollable test item 2</div>
+          <div class="scroll-item">Scrollable test item 3</div>
+          <div class="scroll-item">Scrollable test item 4</div>
+          <div class="scroll-item">Scrollable test item 5</div>
+          <div class="scroll-item">Scrollable test item 6</div>
+          <div class="scroll-item">Scrollable test item 7</div>
+          <div class="scroll-item">Scrollable test item 8</div>
+          <div class="scroll-item">Scrollable test item 9</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Swipe navigation test</h2>
+      <p>Swipe left/right to move through slides, or pinch the buttons.</p>
+      <div class="dots"><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+      <div class="carousel">
+        <div class="slide active"><h3>Slide 1</h3><p>Swipe maps to whatever your app needs: carousel navigation, router transitions, tabs, or history.</p></div>
+        <div class="slide"><h3>Slide 2</h3><p>Pinch-click dispatches standard pointer/mouse/click events on the target under the virtual cursor.</p></div>
+        <div class="slide"><h3>Slide 3</h3><p>Dwell-click is optional. It lets users click by holding steady without pinching.</p></div>
+        <div class="slide"><h3>Slide 4</h3><p>Disable the camera preview and overlay in production, or expose them in a developer/debug panel.</p></div>
+      </div>
+      <p><button id="prev">← Previous</button> <button id="next">Next →</button></p>
+    </section>
+
+    <section class="panel">
+      <h2>Event log</h2>
+      <div id="log" class="log"></div>
+    </section>
+
+    <footer>
+      Serve from <code>localhost</code> or <code>https://</code>. For Cloudflare hosting, deploy this static folder to Cloudflare Pages.
+    </footer>
+  </main>
+
+  <script type="module">
+    import HandNav from '../src/handnav.js';
+
+    const $ = (id) => document.getElementById(id);
+    const statusEl = $('status');
+    const gestureEl = $('gesture');
+    const pointerEl = $('pointer');
+    const eventsEl = $('events');
+    const logEl = $('log');
+    const dwellMeter = $('dwellMeter');
+    const heldAction = $('heldAction');
+    let eventCount = 0;
+    let slide = 0;
+
+    function log(message) {
+      eventCount += 1;
+      eventsEl.textContent = String(eventCount);
+      const line = document.createElement('div');
+      line.textContent = `${new Date().toLocaleTimeString()}  ${message}`;
+      logEl.prepend(line);
+    }
+    window.demoLog = log;
+
+    function renderSlide() {
+      document.querySelectorAll('.slide').forEach((el, i) => el.classList.toggle('active', i === slide));
+      document.querySelectorAll('.dot').forEach((el, i) => el.classList.toggle('active', i === slide));
+    }
+    function next() { slide = (slide + 1) % 4; renderSlide(); log('next slide'); }
+    function prev() { slide = (slide + 3) % 4; renderSlide(); log('previous slide'); }
+    $('next').addEventListener('click', next);
+    $('prev').addEventListener('click', prev);
+
+    const nav = new HandNav({
+      showVideo: true,
+      overlay: true,
+      dwellClick: true,
+      gestureHoldDurationMs: 700,
+      videoPreview: { width: 210, height: 158, right: 14, bottom: 14, opacity: 0.92, borderRadius: 18 },
+      onSwipeLeft: next,
+      onSwipeRight: prev,
+      onThumbsUp: () => { heldAction.textContent = '👍 Thumbs up action'; log('thumbs up action'); },
+      onThumbsDown: () => { heldAction.textContent = '👎 Thumbs down action'; log('thumbs down action'); },
+      onPeace: () => { heldAction.textContent = '✌️ Peace action'; log('peace action'); },
+      onOpenPalm: () => { heldAction.textContent = '🖐️ Open palm action'; log('open palm action'); },
+      onFist: () => { heldAction.textContent = '✊ Fist action'; log('fist action'); },
+      debug: true
+    });
+    window.handNav = nav;
+
+    nav.on('status', (e) => { statusEl.textContent = e.detail.state; log(`status: ${e.detail.state}`); });
+    nav.on('gesture', (e) => {
+      gestureEl.textContent = e.detail.name;
+      pointerEl.textContent = `${Math.round(e.detail.pointer.x)}, ${Math.round(e.detail.pointer.y)}`;
+      document.querySelectorAll('.chip').forEach((chip) => chip.classList.toggle('active', chip.dataset.g === e.detail.name || (chip.dataset.g === 'peace' && e.detail.twoFinger)));
+    });
+    nav.on('dwellprogress', (e) => { dwellMeter.style.width = `${Math.round(e.detail.progress * 100)}%`; });
+    nav.on('dwellclick', (e) => { dwellMeter.style.width = '0%'; log(`dwell click: ${e.detail.element?.tagName || 'unknown'}`); });
+    nav.on('click', (e) => log(`pinch click: ${e.detail.element?.tagName || 'unknown'}`));
+    nav.on('swipeleft', () => log('swipe left'));
+    nav.on('swiperight', () => log('swipe right'));
+    nav.on('error', (e) => { console.error(e.detail); statusEl.textContent = 'Error'; log(`error: ${e.detail.message || e.detail}`); });
+
+    $('start').addEventListener('click', () => nav.start());
+    $('pause').addEventListener('click', () => nav.pause());
+    $('resume').addEventListener('click', () => nav.resume());
+    $('toggleOverlay').addEventListener('click', () => {
+      nav.toggleOverlay();
+      $('toggleOverlay').textContent = `Overlay: ${nav.options.overlay ? 'on' : 'off'}`;
+      log(`overlay ${nav.options.overlay ? 'on' : 'off'}`);
+    });
+    $('toggleVideo').addEventListener('click', () => {
+      nav.toggleVideo();
+      $('toggleVideo').textContent = `Camera: ${nav.options.showVideo ? 'on' : 'off'}`;
+      log(`camera preview ${nav.options.showVideo ? 'on' : 'off'}`);
+    });
+    $('stop').addEventListener('click', () => nav.stop());
+
+    $('toggles').addEventListener('change', (e) => {
+      if (!e.target.matches('input[data-opt]')) return;
+      const key = e.target.dataset.opt;
+      const enabledGestures = { ...nav.options.enabledGestures, [key]: e.target.checked };
+      nav.setOptions({ enabledGestures, dwellClick: enabledGestures.dwellClick });
+      log(`${key} ${e.target.checked ? 'enabled' : 'disabled'}`);
+    });
+  </script>
+</body>
+</html>
