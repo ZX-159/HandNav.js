@@ -17,7 +17,9 @@
     "serve": "python3 -m http.server 8080",
     "check": "node --check src/handnav.js",
     "deploy:cloudflare": "npx wrangler deploy",
-    "deploy:pages": "npx wrangler pages deploy . --project-name=handnav-js-demo"
+    "deploy:pages": "npx wrangler pages deploy . --project-name=handnav-js-demo",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "keywords": [
     "hand-tracking",
@@ -33,5 +35,8 @@
     "demo",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "wrangler": "^4.102.0"
+  }
 }
