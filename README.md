@@ -91,24 +91,56 @@ http://localhost:8080/demo/
 
 Camera access requires `https://` or `localhost`. Opening `demo/index.html` by double-clicking it may not work because browsers restrict camera access on `file://` pages.
 
-### 2. Use it in your page
+### 2. Use it as a wrapper in your app
+
+HandNav is meant to be a small wrapper around camera setup, MediaPipe hand tracking, gesture recognition, and app actions. A developer should only need to create one controller, choose enabled gestures, and wire callbacks.
 
 ```html
 <button id="startHandNav">Start hand navigation</button>
+<button id="pauseHandNav">Pause</button>
 
 <script type="module">
   import HandNav from './src/handnav.js';
 
-  const nav = new HandNav({
-    showVideo: true,
-    onSwipeLeft: () => console.log('Next page'),
-    onSwipeRight: () => console.log('Previous page')
+  const handNav = new HandNav({
+    // Production default: keep debug visuals off.
+    showVideo: false,
+    overlay: false,
+
+    // Choose what gestures your app supports.
+    enabledGestures: {
+      pinchClick: true,
+      twoFingerScroll: true,
+      swipe: true,
+      dwellClick: false,
+      thumbsUp: true,
+      openPalm: true,
+      fist: false
+    },
+
+    // Map gestures to your app.
+    onSwipeLeft: () => goToNextPage(),
+    onSwipeRight: () => goToPreviousPage(),
+    onThumbsUp: () => likeCurrentItem(),
+    onOpenPalm: () => pauseExperience()
   });
 
-  document.getElementById('startHandNav').addEventListener('click', async () => {
-    await nav.start();
-  });
+  document.getElementById('startHandNav').addEventListener('click', () => handNav.start());
+  document.getElementById('pauseHandNav').addEventListener('click', () => handNav.togglePause());
+
+  function goToNextPage() { console.log('next'); }
+  function goToPreviousPage() { console.log('previous'); }
+  function likeCurrentItem() { console.log('liked'); }
+  function pauseExperience() { console.log('paused'); }
 </script>
+```
+
+You can also use the factory helper:
+
+```js
+import { createHandNav } from './src/handnav.js';
+
+const handNav = createHandNav({ overlay: false, showVideo: false });
 ```
 
 ---
@@ -308,6 +340,10 @@ const nav = new HandNav({
   pointerSize: 26,
   smoothing: 0.35,
 
+  // Noise filtering / false-positive reduction
+  handConfidenceThreshold: 0.45,
+  minHandSizePx: 42,
+
   // Click
   click: true,
   pinchThreshold: 0.35,
@@ -317,7 +353,14 @@ const nav = new HandNav({
   // Scroll
   scroll: true,
   scrollMode: 'twoFinger',
-  scrollSpeed: 1.35,
+  scrollAnchor: 'wrist',      // more stable than fingertip scrolling
+  scrollControl: 'velocity',  // stable page scrolling; 'drag' is also available
+  scrollSpeed: 1.25,
+  scrollDeadzonePx: 1.2,
+  scrollActivationDeadzonePx: 16,
+  scrollVelocityScale: 0.32,
+  scrollSmoothing: 0.26,
+  scrollMaxStepPx: 68,
 
   // Swipe
   swipe: true,
@@ -395,6 +438,60 @@ Event callback shape:
 ```
 
 ---
+
+## Scrolling stability
+
+Two-finger scrolling uses a wrist-based velocity controller by default. This is more stable for full-page scrolling because fingertip landmarks jitter more and document scrolling changes the content under the cursor.
+
+```js
+const nav = new HandNav({
+  scrollAnchor: 'wrist',        // 'wrist', 'indexTip', or 'middleMcp'
+  scrollControl: 'velocity',    // recommended for pages
+  scrollSpeed: 1.25,
+  scrollActivationDeadzonePx: 16,
+  scrollVelocityScale: 0.32,
+  scrollSmoothing: 0.26,
+  scrollMaxStepPx: 68
+});
+```
+
+If you want old-style drag scrolling for a small custom container:
+
+```js
+const nav = new HandNav({
+  scrollControl: 'drag',
+  scrollSpeed: 1.4,
+  scrollDeadzonePx: 2
+});
+```
+
+Avoid CSS that transforms large layout containers on `.handnav-hover`; transforms on hovered sections can make the page appear to shake while hand scrolling. Use `outline` or `box-shadow` instead. HandNav also disables hand hover while two-finger scrolling is active.
+
+## Reducing background noise and false positives
+
+HandNav cannot remove camera background pixels like a full segmentation model, but it now filters tracking results before they become app gestures:
+
+- keeps only hands above `handConfidenceThreshold`
+- ignores tiny distant hands with `minHandSizePx`
+- uses only the largest confident hand by default
+- smooths pointer and scroll input
+- suppresses peace-sign app actions while the same gesture is being used for scrolling
+
+Recommended noisy-room setup:
+
+```js
+const nav = new HandNav({
+  numHands: 1,
+  handConfidenceThreshold: 0.55,
+  minHandSizePx: 58,
+  smoothing: 0.28,
+  scrollAnchor: 'wrist',
+  scrollControl: 'velocity',
+  suppressPeaceActionDuringScroll: true
+});
+```
+
+If tracking does not start because your hand is far from the camera, lower `minHandSizePx` back toward `42`.
 
 ## Choosing which gestures your app supports
 
