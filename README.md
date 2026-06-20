@@ -1,7 +1,5 @@
 # HandNav.js
 
-Try out the demo at: https://handnav-js.zixu159.workers.dev/
-
 Drop-in hand-tracking navigation for websites and web apps. HandNav turns a webcam into a gesture controller:
 
 - **Point** with your index fingertip to move a virtual cursor.
@@ -47,6 +45,7 @@ handnav-js/
 ├─ package.json
 ├─ wrangler.jsonc       # Cloudflare Workers Static Assets config
 ├─ CLOUDFLARE.md        # Cloudflare deployment guide
+├─ THIRD_PARTY_NOTICES.md
 ├─ LICENSE
 └─ README.md
 ```
@@ -342,9 +341,17 @@ const nav = new HandNav({
   pointerSize: 26,
   smoothing: 0.35,
 
+  // Performance and stabilization
+  performanceMode: 'auto',        // 'auto', 'performance', 'balanced', 'quality'
+  advancedStabilization: 'auto',  // enables extra landmark smoothing when device can handle it
+  landmarkSmoothing: 0.42,
+
   // Noise filtering / false-positive reduction
   handConfidenceThreshold: 0.45,
   minHandSizePx: 42,
+  minHandDetectionConfidence: 0.58,
+  minHandPresenceConfidence: 0.58,
+  minTrackingConfidence: 0.55,
 
   // Click
   click: true,
@@ -395,7 +402,13 @@ const nav = new HandNav({
     peace: true,
     openPalm: true,
     fist: true
-  }
+  },
+
+  // Optional non-intrusive user guidance
+  notifications: true,
+  notificationAfterMs: 700,
+  noHandIgnoreAfterMs: 2600,
+  notificationPosition: 'bottom-center'
 });
 ```
 
@@ -468,6 +481,70 @@ const nav = new HandNav({
 ```
 
 Avoid CSS that transforms large layout containers on `.handnav-hover`; transforms on hovered sections can make the page appear to shake while hand scrolling. Use `outline` or `box-shadow` instead. HandNav also disables hand hover while two-finger scrolling is active.
+
+
+## User guidance notifications
+
+HandNav can show a small, non-blocking notification when tracking was active and the user's hand becomes too small, low-confidence, or briefly leaves the camera view.
+
+It intentionally hides the notification after `noHandIgnoreAfterMs` so the page does not nag users who switched back to mouse/keyboard.
+
+```js
+const nav = new HandNav({
+  notifications: true,
+  notificationAfterMs: 700,
+  noHandIgnoreAfterMs: 2600,
+  notificationPosition: 'bottom-center'
+});
+
+nav.setNotificationsVisible(false); // disable at runtime
+```
+
+Built-in messages include:
+
+- `Move your hand a little closer`
+- `Hold your hand steady in the camera view`
+- `Hand not detected — move back into camera view`
+
+---
+
+## Performance and recognition quality
+
+HandNav has an `auto` performance profile. On stronger devices, it enables extra landmark stabilization and stricter confidence thresholds. On lower-power devices, it reduces extra work and can lower camera constraints.
+
+```js
+const nav = new HandNav({
+  performanceMode: 'auto', // 'auto', 'performance', 'balanced', 'quality'
+  advancedStabilization: 'auto',
+  landmarkSmoothing: 0.42
+});
+```
+
+For maximum stability on modern laptops/desktops:
+
+```js
+const nav = new HandNav({
+  performanceMode: 'quality',
+  advancedStabilization: true,
+  handConfidenceThreshold: 0.55,
+  minHandDetectionConfidence: 0.62,
+  minHandPresenceConfidence: 0.62,
+  minTrackingConfidence: 0.58
+});
+```
+
+For older phones or weak devices:
+
+```js
+const nav = new HandNav({
+  performanceMode: 'performance',
+  advancedStabilization: false,
+  overlay: false,
+  showVideo: false
+});
+```
+
+---
 
 ## Reducing background noise and false positives
 
@@ -750,6 +827,25 @@ npm run serve
 ```
 
 Then open `http://localhost:8080/demo/`.
+
+---
+
+## Third-party credits and license notes
+
+HandNav.js itself is released under the MIT License. The default tracking backend is **Google MediaPipe Tasks Vision**, loaded at runtime from CDN/model URLs unless you self-host it.
+
+MediaPipe is licensed under the **Apache License 2.0**. This repo includes a `THIRD_PARTY_NOTICES.md` file with MediaPipe attribution and practical redistribution notes.
+
+You generally do **not** need to change this project's MIT `LICENSE` just because your app imports MediaPipe at runtime. However, if you redistribute or self-host MediaPipe package files, WASM assets, model files, or source code, keep the applicable Apache 2.0 license and notices with those files.
+
+Suggested app credit text:
+
+```text
+Hand tracking powered by Google MediaPipe Tasks Vision.
+MediaPipe is licensed under the Apache License 2.0.
+```
+
+HandNav.js is an independent wrapper and is not endorsed by Google.
 
 ---
 

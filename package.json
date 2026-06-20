@@ -1,6 +1,6 @@
 {
   "name": "handnav-js",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Drop-in hand tracking navigation for websites and web apps using MediaPipe hand landmarks.",
   "type": "module",
   "main": "src/handnav.js",
@@ -32,6 +32,7 @@
     "src",
     "demo",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ]
 }

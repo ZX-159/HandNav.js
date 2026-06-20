@@ -38,7 +38,15 @@ const DEFAULTS = {
     height: { ideal: 480 },
     frameRate: { ideal: 30, max: 60 }
   },
+  performanceMode: "auto", // "auto", "performance", "balanced", or "quality"
+  advancedStabilization: "auto", // "auto", true, or false
+  landmarkSmoothing: 0.42,
   smoothing: 0.35,
+  handConfidenceThreshold: 0.45,
+  minHandSizePx: 42,
+  minHandDetectionConfidence: 0.58,
+  minHandPresenceConfidence: 0.58,
+  minTrackingConfidence: 0.55,
   pointer: true,
   pointerElement: true,
   pointerSize: 26,
@@ -51,8 +59,14 @@ const DEFAULTS = {
   pressedClass: "handnav-pressed",
   scroll: true,
   scrollMode: "twoFinger", // "twoFinger" or false
-  scrollSpeed: 1.35,
-  scrollDeadzonePx: 4,
+  scrollAnchor: "wrist", // "wrist", "indexTip", or "middleMcp"
+  scrollControl: "velocity", // "velocity" or "drag"
+  scrollSpeed: 1.25,
+  scrollDeadzonePx: 1.2,
+  scrollActivationDeadzonePx: 16,
+  scrollVelocityScale: 0.32,
+  scrollSmoothing: 0.26,
+  scrollMaxStepPx: 68,
   swipe: true,
   swipeThresholdPx: 160,
   swipeMaxVerticalPx: 120,
@@ -67,6 +81,7 @@ const DEFAULTS = {
   onFist: null,
   gestureHoldDurationMs: 700,
   gestureActionCooldownMs: 1200,
+  suppressPeaceActionDuringScroll: true,
   dwellClick: false,
   dwellTimeMs: 950,
   dwellRadiusPx: 24,
@@ -81,6 +96,10 @@ const DEFAULTS = {
     openPalm: true,
     fist: true
   },
+  notifications: true,
+  notificationAfterMs: 700,
+  noHandIgnoreAfterMs: 2600,
+  notificationPosition: "bottom-center", // "bottom-center", "bottom-right", "top-center"
   autoStart: false,
   debug: false
 };
@@ -154,6 +173,7 @@ function isInputLike(el) {
 export class HandNav {
   constructor(options = {}) {
     this.options = deepMerge(DEFAULTS, options);
+    this.applyPerformanceProfile(options);
     this.state = "idle";
     this.video = this.options.video || document.createElement("video");
     this.stream = null;
@@ -165,6 +185,7 @@ export class HandNav {
     this.pinchDown = false;
     this.pinchStart = null;
     this.lastScrollY = null;
+    this.scrollSession = null;
     this.history = [];
     this.lastSwipeAt = 0;
     this.lastVideoTime = -1;
@@ -173,15 +194,45 @@ export class HandNav {
     this.dwell = null;
     this.gestureHolds = new Map();
     this.lastGestureActions = new Map();
+    this.lastDetectionMeta = { rawCount: 0 };
+    this.lastHandSeenAt = 0;
+    this.lostSince = null;
+    this.notificationTimer = 0;
+    this.stabilizedLandmarks = null;
 
     this.root = null;
     this.cursorEl = null;
     this.canvas = null;
     this.ctx = null;
+    this.noticeEl = null;
 
     if (this.options.autoStart) {
       queueMicrotask(() => this.start().catch((err) => this.emit("error", err)));
     }
+  }
+
+  applyPerformanceProfile(userOptions = {}) {
+    const mode = this.options.performanceMode;
+    const cores = navigator.hardwareConcurrency || 4;
+    const memory = navigator.deviceMemory || 4;
+    const highPower = cores >= 8 && memory >= 4;
+    const lowPower = cores <= 4 || memory <= 2;
+    const effectiveMode = mode === "auto" ? (highPower ? "quality" : lowPower ? "performance" : "balanced") : mode;
+
+    if (effectiveMode === "quality") {
+      if (userOptions.advancedStabilization === undefined) this.options.advancedStabilization = true;
+      if (userOptions.handConfidenceThreshold === undefined) this.options.handConfidenceThreshold = 0.5;
+      if (userOptions.minHandDetectionConfidence === undefined) this.options.minHandDetectionConfidence = 0.62;
+      if (userOptions.minHandPresenceConfidence === undefined) this.options.minHandPresenceConfidence = 0.62;
+      if (userOptions.minTrackingConfidence === undefined) this.options.minTrackingConfidence = 0.58;
+    }
+    if (effectiveMode === "performance") {
+      if (userOptions.advancedStabilization === undefined) this.options.advancedStabilization = false;
+      if (userOptions.camera === undefined) {
+        this.options.camera = deepMerge(this.options.camera, { width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 30 } });
+      }
+    }
+    this.options.effectivePerformanceMode = effectiveMode;
   }
 
   async start() {
@@ -258,6 +309,7 @@ export class HandNav {
     this.canvas = null;
     this.ctx = null;
     this.cursorEl = null;
+    this.noticeEl = null;
     this.emit("status", { state: this.state });
   }
 
@@ -314,13 +366,37 @@ export class HandNav {
     this.pinchDown = false;
     this.pinchStart = null;
     this.lastScrollY = null;
+    this.scrollSession = null;
     this.history = [];
     this.dwell = null;
+    this.stabilizedLandmarks = null;
     this.gestureHolds.clear();
     this.lastHovered?.classList?.remove(this.options.hoverClass);
     this.lastHovered = null;
     this.cursorEl?.classList.remove(this.options.pressedClass);
     this.styleCursorPressed(false);
+  }
+
+  setNotificationsVisible(visible) {
+    this.options.notifications = !!visible;
+    if (!visible) this.hideNotice();
+    return this;
+  }
+
+  notify(message, type = "info") {
+    if (!this.options.notifications) return;
+    this.ensureUi();
+    this.ensureNotice();
+    this.noticeEl.textContent = message;
+    this.noticeEl.setAttribute("data-type", type);
+    this.noticeEl.style.opacity = "1";
+    this.noticeEl.style.transform = this.noticeTransform(true);
+  }
+
+  hideNotice() {
+    if (!this.noticeEl) return;
+    this.noticeEl.style.opacity = "0";
+    this.noticeEl.style.transform = this.noticeTransform(false);
   }
 
   on(type, handler) {
@@ -429,6 +505,41 @@ export class HandNav {
     }
   }
 
+  ensureNotice() {
+    if (this.noticeEl) return;
+    this.noticeEl = document.createElement("div");
+    this.noticeEl.setAttribute("data-handnav", "notice");
+    const pos = this.options.notificationPosition;
+    const style = {
+      position: "fixed",
+      maxWidth: "min(360px, calc(100vw - 32px))",
+      padding: "10px 14px",
+      borderRadius: "999px",
+      background: "rgba(8, 17, 31, 0.82)",
+      color: "#eef5ff",
+      border: "1px solid rgba(255,255,255,0.18)",
+      boxShadow: "0 14px 45px rgba(0,0,0,0.28)",
+      backdropFilter: "blur(14px)",
+      font: "600 13px/1.35 system-ui, -apple-system, Segoe UI, sans-serif",
+      pointerEvents: "none",
+      opacity: "0",
+      transition: "opacity 180ms ease, transform 180ms ease",
+      zIndex: String(this.options.pointerZIndex),
+      left: pos.includes("center") ? "50%" : "auto",
+      right: pos.includes("right") ? "16px" : "auto",
+      top: pos.startsWith("top") ? "16px" : "auto",
+      bottom: pos.startsWith("bottom") ? "20px" : "auto",
+      transform: this.noticeTransform(false)
+    };
+    Object.assign(this.noticeEl.style, style);
+    this.root.appendChild(this.noticeEl);
+  }
+
+  noticeTransform(visible) {
+    const y = visible ? "0" : "8px";
+    return this.options.notificationPosition.includes("center") ? `translate(-50%, ${y})` : `translateY(${y})`;
+  }
+
   async setupCamera() {
     if (!window.isSecureContext) {
       throw new Error("Camera access requires a secure context. Open the site from https:// or http://localhost, not file:// or an embedded preview.");
@@ -485,9 +596,9 @@ export class HandNav {
       },
       runningMode: "VIDEO",
       numHands: this.options.numHands,
-      minHandDetectionConfidence: 0.55,
-      minHandPresenceConfidence: 0.55,
-      minTrackingConfidence: 0.5
+      minHandDetectionConfidence: this.options.minHandDetectionConfidence,
+      minHandPresenceConfidence: this.options.minHandPresenceConfidence,
+      minTrackingConfidence: this.options.minTrackingConfidence
     });
   }
 
@@ -512,11 +623,18 @@ export class HandNav {
       this.clearCanvas();
       this.setCursorVisible(false);
       this.lastScrollY = null;
-      this.emit("lost", {});
+      this.scrollSession = null;
+      this.stabilizedLandmarks = null;
+      this.handleNoHands(this.lastDetectionMeta);
+      this.emit("lost", this.lastDetectionMeta);
       return;
     }
 
-    const hand = hands[0];
+    let hand = hands[0];
+    hand = { ...hand, landmarks: this.stabilizeLandmarks(hand.landmarks) };
+    this.lastHandSeenAt = performance.now();
+    this.lostSince = null;
+    this.hideNotice();
     this.setCursorVisible(true);
     this.updatePointer(hand.landmarks);
     this.draw(hand.landmarks);
@@ -526,10 +644,11 @@ export class HandNav {
     this.emit("hand", payload);
     this.emit("gesture", payload);
 
-    if (this.options.pointer) this.updateHover();
+    if (this.options.pointer && !gesture.twoFinger) this.updateHover();
+    if (gesture.twoFinger) this.clearHover();
     if (this.options.click && this.isGestureEnabled("pinchClick")) this.handlePinch(gesture);
     if (this.options.dwellClick && this.isGestureEnabled("dwellClick")) this.handleDwellClick(gesture);
-    if (this.options.scroll && this.isGestureEnabled("twoFingerScroll")) this.handleScroll(gesture);
+    if (this.options.scroll && this.isGestureEnabled("twoFingerScroll")) this.handleScroll(gesture, hand.landmarks);
     if (this.options.swipe && this.isGestureEnabled("swipe")) this.handleSwipe(hand.landmarks);
     this.handleHeldGestures(gesture);
   }
@@ -537,15 +656,86 @@ export class HandNav {
   normalizeResult(result) {
     const out = [];
     const landmarks = result?.landmarks || [];
+    let bestRejected = null;
     for (let i = 0; i < landmarks.length; i++) {
+      const handednessScore = result.handedness?.[i]?.[0]?.score ?? 1;
+      const sizePx = this.handSizePx(landmarks[i]);
+      const rejected = handednessScore < this.options.handConfidenceThreshold
+        ? "low-confidence"
+        : sizePx < this.options.minHandSizePx
+          ? "too-small"
+          : null;
+      if (rejected) {
+        const candidate = { reason: rejected, handednessScore, sizePx };
+        if (!bestRejected || (sizePx * handednessScore) > (bestRejected.sizePx * bestRejected.handednessScore)) bestRejected = candidate;
+        continue;
+      }
       out.push({
         landmarks: landmarks[i],
         worldLandmarks: result.worldLandmarks?.[i] || null,
         handedness: result.handedness?.[i]?.[0]?.categoryName || null,
-        handednessScore: result.handedness?.[i]?.[0]?.score || null
+        handednessScore,
+        sizePx
       });
     }
+    // Prefer the largest confident hand. This helps ignore small/background hands or false positives.
+    out.sort((a, b) => (b.sizePx * b.handednessScore) - (a.sizePx * a.handednessScore));
+    this.lastDetectionMeta = { rawCount: landmarks.length, acceptedCount: out.length, bestRejected };
     return out;
+  }
+
+  handSizePx(landmarks) {
+    if (!landmarks?.length) return 0;
+    const a = this.toScreen(landmarks[LANDMARK.INDEX_MCP]);
+    const b = this.toScreen(landmarks[LANDMARK.PINKY_MCP]);
+    const c = this.toScreen(landmarks[LANDMARK.WRIST]);
+    const d = this.toScreen(landmarks[LANDMARK.MIDDLE_TIP]);
+    return Math.max(Math.hypot(a.x - b.x, a.y - b.y), Math.hypot(c.x - d.x, c.y - d.y) * 0.55);
+  }
+
+  shouldUseAdvancedStabilization() {
+    if (this.options.advancedStabilization === true) return true;
+    if (this.options.advancedStabilization === false) return false;
+    return this.options.effectivePerformanceMode !== "performance";
+  }
+
+  stabilizeLandmarks(landmarks) {
+    if (!this.shouldUseAdvancedStabilization() || !this.stabilizedLandmarks) {
+      this.stabilizedLandmarks = landmarks.map((p) => ({ ...p }));
+      return this.stabilizedLandmarks;
+    }
+    const baseAlpha = clamp(this.options.landmarkSmoothing, 0.05, 0.95);
+    this.stabilizedLandmarks = landmarks.map((point, i) => {
+      const prev = this.stabilizedLandmarks[i] || point;
+      const movement = Math.hypot(point.x - prev.x, point.y - prev.y, (point.z || 0) - (prev.z || 0));
+      const adaptiveAlpha = clamp(baseAlpha + movement * 9, baseAlpha, 0.88);
+      return {
+        x: lerp(prev.x, point.x, adaptiveAlpha),
+        y: lerp(prev.y, point.y, adaptiveAlpha),
+        z: lerp(prev.z || 0, point.z || 0, adaptiveAlpha)
+      };
+    });
+    return this.stabilizedLandmarks;
+  }
+
+  handleNoHands(meta = {}) {
+    const now = performance.now();
+    if (this.lostSince == null) this.lostSince = now;
+    const lostFor = now - this.lostSince;
+    const sinceSeen = this.lastHandSeenAt ? now - this.lastHandSeenAt : Infinity;
+
+    if (meta.rawCount > 0 && meta.bestRejected && lostFor >= this.options.notificationAfterMs) {
+      if (meta.bestRejected.reason === "too-small") this.notify("Move your hand a little closer", "warn");
+      else this.notify("Hold your hand steady in the camera view", "warn");
+      return;
+    }
+
+    if (sinceSeen < this.options.noHandIgnoreAfterMs && lostFor >= this.options.notificationAfterMs) {
+      this.notify("Hand not detected — move back into camera view", "info");
+      return;
+    }
+
+    if (sinceSeen >= this.options.noHandIgnoreAfterMs) this.hideNotice();
   }
 
   toScreen(point) {
@@ -583,7 +773,8 @@ export class HandNav {
     const extendedCount = Object.values(fingers).filter(Boolean).length;
     const otherFingersFolded = !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky;
     const peace = fingers.index && fingers.middle && !fingers.ring && !fingers.pinky;
-    const twoFinger = peace;
+    // Scrolling should be forgiving: ring/pinky landmarks can briefly jitter as extended.
+    const twoFinger = fingers.index && fingers.middle && extendedCount <= 3;
     const openPalm = extendedCount >= 4;
     const fist = extendedCount === 0 && !thumbVerticalUp && !thumbVerticalDown;
     const pointing = fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky;
@@ -647,7 +838,8 @@ export class HandNav {
     const candidates = ["thumbsUp", "thumbsDown", "peace", "openPalm", "fist"];
     const now = performance.now();
     for (const name of candidates) {
-      if (!gesture[name] || !this.isGestureEnabled(name)) {
+      const suppressPeace = name === "peace" && this.options.suppressPeaceActionDuringScroll && gesture.twoFinger && this.options.scroll && this.isGestureEnabled("twoFingerScroll");
+      if (suppressPeace || !gesture[name] || !this.isGestureEnabled(name)) {
         this.gestureHolds.delete(name);
         continue;
       }
@@ -680,8 +872,14 @@ export class HandNav {
     if (typeof callback === "function") callback(detail);
   }
 
+  clearHover() {
+    this.lastHovered?.classList?.remove(this.options.hoverClass);
+    this.lastHovered = null;
+  }
+
   updateHover() {
-    const el = document.elementFromPoint(this.pointer.x, this.pointer.y);
+    let el = document.elementFromPoint(this.pointer.x, this.pointer.y);
+    if (el === document.body || el === document.documentElement) el = null;
     if (el === this.lastHovered) return;
     this.lastHovered?.classList?.remove(this.options.hoverClass);
     this.lastHovered = el;
@@ -742,23 +940,72 @@ export class HandNav {
     target.dispatchEvent(new EventCtor(type, eventInit));
   }
 
-  handleScroll(gesture) {
-    if (this.options.scrollMode !== "twoFinger" || !gesture.twoFinger || this.pinchDown) {
+  handleScroll(gesture, landmarks) {
+    if (this.options.scrollMode !== "twoFinger" || !gesture.twoFinger || this.pinchDown || !landmarks) {
       this.lastScrollY = null;
+      this.scrollSession = null;
       return;
     }
-    if (this.lastScrollY == null) {
-      this.lastScrollY = this.pointer.y;
+
+    const anchor = this.getScrollAnchorPoint(landmarks);
+    const y = anchor.y;
+    const now = performance.now();
+
+    if (!this.scrollSession) {
+      const target = this.clickTarget();
+      this.scrollSession = {
+        scroller: this.findScroller(target),
+        startY: y,
+        y,
+        lastY: y,
+        accumulator: 0,
+        lastFrameAt: now,
+        startedAt: now
+      };
+      this.lastScrollY = y;
+      this.emit("scrollstart", { element: this.scrollSession.scroller, pointer: { ...this.pointer } });
       return;
     }
-    const dy = this.pointer.y - this.lastScrollY;
-    this.lastScrollY = this.pointer.y;
-    if (Math.abs(dy) < this.options.scrollDeadzonePx) return;
-    const scrollAmount = dy * this.options.scrollSpeed;
-    const target = this.clickTarget();
-    const scroller = this.findScroller(target);
-    scroller.scrollBy({ top: scrollAmount, behavior: "auto" });
-    this.emit("scroll", { amount: scrollAmount, element: scroller, pointer: { ...this.pointer } });
+
+    const smoothing = clamp(this.options.scrollSmoothing, 0, 1);
+    const smoothY = lerp(this.scrollSession.y, y, smoothing);
+    const dt = Math.max(8, Math.min(50, now - this.scrollSession.lastFrameAt));
+    this.scrollSession.lastFrameAt = now;
+    this.scrollSession.y = smoothY;
+    this.lastScrollY = smoothY;
+
+    let scrollAmount = 0;
+    if (this.options.scrollControl === "drag") {
+      let dy = smoothY - this.scrollSession.lastY;
+      this.scrollSession.lastY = smoothY;
+      this.scrollSession.accumulator += dy;
+      if (Math.abs(this.scrollSession.accumulator) < this.options.scrollDeadzonePx) return;
+      dy = clamp(this.scrollSession.accumulator, -this.options.scrollMaxStepPx, this.options.scrollMaxStepPx);
+      this.scrollSession.accumulator = 0;
+      scrollAmount = dy * this.options.scrollSpeed;
+    } else {
+      const offset = smoothY - this.scrollSession.startY;
+      const deadzone = this.options.scrollActivationDeadzonePx;
+      if (Math.abs(offset) < deadzone) return;
+      const direction = Math.sign(offset);
+      const activeOffset = offset - direction * deadzone;
+      const frameScale = dt / 16.67;
+      scrollAmount = clamp(
+        activeOffset * this.options.scrollVelocityScale * this.options.scrollSpeed * frameScale,
+        -this.options.scrollMaxStepPx,
+        this.options.scrollMaxStepPx
+      );
+    }
+
+    this.scrollSession.scroller.scrollBy({ top: scrollAmount, behavior: "auto" });
+    this.emit("scroll", { amount: scrollAmount, element: this.scrollSession.scroller, pointer: { ...this.pointer } });
+  }
+
+  getScrollAnchorPoint(landmarks) {
+    const anchor = this.options.scrollAnchor;
+    if (anchor === "indexTip") return this.toScreen(landmarks[LANDMARK.INDEX_TIP]);
+    if (anchor === "middleMcp") return this.toScreen(landmarks[LANDMARK.MIDDLE_MCP]);
+    return this.toScreen(landmarks[LANDMARK.WRIST]);
   }
 
   findScroller(start) {
@@ -850,9 +1097,14 @@ export class HandNav {
   }
 }
 
+export function createHandNav(options = {}) {
+  return new HandNav(options);
+}
+
 export { LANDMARK, HAND_CONNECTIONS };
 export default HandNav;
 
 if (typeof window !== "undefined") {
   window.HandNav = HandNav;
+  window.createHandNav = createHandNav;
 }

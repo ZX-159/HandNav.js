@@ -77,7 +77,16 @@ export interface HandNavOptions {
   videoPreview?: HandNavVideoPreviewOptions;
   mirror?: boolean;
   camera?: MediaTrackConstraints;
+  performanceMode?: 'auto' | 'performance' | 'balanced' | 'quality';
+  effectivePerformanceMode?: 'performance' | 'balanced' | 'quality';
+  advancedStabilization?: 'auto' | boolean;
+  landmarkSmoothing?: number;
   smoothing?: number;
+  handConfidenceThreshold?: number;
+  minHandSizePx?: number;
+  minHandDetectionConfidence?: number;
+  minHandPresenceConfidence?: number;
+  minTrackingConfidence?: number;
   pointer?: boolean;
   pointerElement?: boolean;
   pointerSize?: number;
@@ -90,8 +99,14 @@ export interface HandNavOptions {
   pressedClass?: string;
   scroll?: boolean;
   scrollMode?: 'twoFinger' | false;
+  scrollAnchor?: 'wrist' | 'indexTip' | 'middleMcp';
+  scrollControl?: 'velocity' | 'drag';
   scrollSpeed?: number;
   scrollDeadzonePx?: number;
+  scrollActivationDeadzonePx?: number;
+  scrollVelocityScale?: number;
+  scrollSmoothing?: number;
+  scrollMaxStepPx?: number;
   swipe?: boolean;
   swipeThresholdPx?: number;
   swipeMaxVerticalPx?: number;
@@ -106,10 +121,15 @@ export interface HandNavOptions {
   onFist?: ((detail: any) => void) | null;
   gestureHoldDurationMs?: number;
   gestureActionCooldownMs?: number;
+  suppressPeaceActionDuringScroll?: boolean;
   dwellClick?: boolean;
   dwellTimeMs?: number;
   dwellRadiusPx?: number;
   enabledGestures?: HandNavEnabledGestures;
+  notifications?: boolean;
+  notificationAfterMs?: number;
+  noHandIgnoreAfterMs?: number;
+  notificationPosition?: 'bottom-center' | 'bottom-right' | 'top-center';
   autoStart?: boolean;
   debug?: boolean;
 }
@@ -127,11 +147,13 @@ export declare class HandNav {
   toggleOverlay(force?: boolean): this;
   setVideoVisible(visible: boolean): this;
   toggleVideo(force?: boolean): this;
+  setNotificationsVisible(visible: boolean): this;
   on<T = any>(type: string, handler: (event: HandNavEvent<T>) => void): () => void;
   off<T = any>(type: string, handler: (event: HandNavEvent<T>) => void): void;
 }
 
 declare const _default: typeof HandNav;
 export default _default;
+export declare function createHandNav(options?: HandNavOptions): HandNav;
 export declare const LANDMARK: Record<string, number>;
 export declare const HAND_CONNECTIONS: number[][];

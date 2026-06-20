@@ -21,7 +21,7 @@
       --radius: 28px;
     }
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: auto; }
     body {
       margin: 0;
       min-height: 100vh;
@@ -77,11 +77,18 @@
       gap: 8px;
       user-select: none;
     }
-    button:hover, a.button:hover, .handnav-hover {
+    button:hover, a.button:hover {
       transform: translateY(-1px) scale(1.025);
       background: rgba(58,134,255,.23) !important;
       border-color: rgba(58,134,255,.85) !important;
       box-shadow: 0 10px 35px rgba(58,134,255,.18);
+    }
+    .handnav-hover {
+      outline: 3px solid rgba(58,134,255,.9) !important;
+      outline-offset: 4px;
+      background: rgba(58,134,255,.16) !important;
+      border-color: rgba(58,134,255,.75) !important;
+      box-shadow: 0 0 0 8px rgba(58,134,255,.10), 0 12px 38px rgba(58,134,255,.16) !important;
     }
     button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; }
     button.danger { background: rgba(255,77,109,.20); }
@@ -148,6 +155,7 @@
       <button id="resume">Resume</button>
       <button id="toggleOverlay">Overlay: on</button>
       <button id="toggleVideo">Camera: on</button>
+      <button id="toggleNotices">Notices: on</button>
       <button id="stop" class="danger">Stop</button>
     </div>
   </header>
@@ -332,7 +340,18 @@
       showVideo: true,
       overlay: true,
       dwellClick: true,
+      notifications: true,
+      notificationAfterMs: 700,
+      noHandIgnoreAfterMs: 2600,
+      performanceMode: 'auto',
+      advancedStabilization: 'auto',
       gestureHoldDurationMs: 700,
+      scrollControl: 'velocity',
+      scrollAnchor: 'wrist',
+      scrollSpeed: 1.25,
+      scrollActivationDeadzonePx: 16,
+      scrollVelocityScale: 0.32,
+      suppressPeaceActionDuringScroll: true,
       videoPreview: { width: 210, height: 158, right: 14, bottom: 14, opacity: 0.92, borderRadius: 18 },
       onSwipeLeft: next,
       onSwipeRight: prev,
@@ -386,6 +405,11 @@
       nav.toggleVideo();
       $('toggleVideo').textContent = `Camera: ${nav.options.showVideo ? 'on' : 'off'}`;
       log(`camera preview ${nav.options.showVideo ? 'on' : 'off'}`);
+    });
+    $('toggleNotices').addEventListener('click', () => {
+      nav.setNotificationsVisible(!nav.options.notifications);
+      $('toggleNotices').textContent = `Notices: ${nav.options.notifications ? 'on' : 'off'}`;
+      log(`notices ${nav.options.notifications ? 'on' : 'off'}`);
     });
     $('stop').addEventListener('click', () => nav.stop());
 
