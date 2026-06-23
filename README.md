@@ -1,5 +1,7 @@
 # HandNav.js
 
+Try demo at: https://handnav-js.zixu159.workers.dev/
+
 Drop-in hand-tracking navigation for websites and web apps. HandNav turns a webcam into a gesture controller:
 
 - **Point** with your index fingertip to move a virtual cursor.
