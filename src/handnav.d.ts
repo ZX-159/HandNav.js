@@ -1,5 +1,6 @@
 export type HandNavStatus = 'idle' | 'starting' | 'running' | 'paused' | 'stopped';
 export type HandNavGestureName = 'pinch' | 'twoFinger' | 'peace' | 'thumbsUp' | 'thumbsDown' | 'openPalm' | 'fist' | 'point' | 'hand';
+export type HandNavCursorFilter = 'adaptive' | 'lerp';
 
 export interface HandNavPointer {
   x: number;
@@ -10,8 +11,10 @@ export interface HandNavPointer {
 
 export interface HandNavGestureDetail {
   name: HandNavGestureName;
+  palmWidth: number;
   pinchRatio: number;
   pinching: boolean;
+  confidence: Record<string, number>;
   fingers: {
     index: boolean;
     middle: boolean;
@@ -64,6 +67,16 @@ export interface HandNavEnabledGestures {
   fist?: boolean;
 }
 
+export interface HandNavCalibration {
+  createdAt?: number;
+  palmWidthPx?: number;
+  naturalPinchRatio?: number;
+  movementRangePx?: number;
+  pinchThreshold?: number;
+  pinchReleaseThreshold?: number;
+  minHandSizePx?: number;
+}
+
 export interface HandNavOptions {
   tasksVisionUrl?: string;
   wasmPath?: string;
@@ -81,6 +94,9 @@ export interface HandNavOptions {
   effectivePerformanceMode?: 'performance' | 'balanced' | 'quality';
   advancedStabilization?: 'auto' | boolean;
   landmarkSmoothing?: number;
+  cursorFilter?: HandNavCursorFilter;
+  predictiveTracking?: boolean;
+  trackingLossPredictionMs?: number;
   smoothing?: number;
   handConfidenceThreshold?: number;
   minHandSizePx?: number;
@@ -92,8 +108,15 @@ export interface HandNavOptions {
   pointerSize?: number;
   pointerZIndex?: number;
   click?: boolean;
+  drag?: boolean;
   pinchThreshold?: number;
   pinchReleaseThreshold?: number;
+  pinchConfirmMs?: number;
+  longPinchMs?: number;
+  doublePinchMs?: number;
+  dragStartThresholdPx?: number;
+  dragOnLongPinch?: boolean;
+  pointerDownOnPinch?: boolean;
   clickMaxTravelPx?: number;
   hoverClass?: string;
   pressedClass?: string;
@@ -109,11 +132,12 @@ export interface HandNavOptions {
   scrollMaxStepPx?: number;
   swipe?: boolean;
   swipeThresholdPx?: number;
+  swipeVelocityThresholdPxS?: number;
   swipeMaxVerticalPx?: number;
   swipeWindowMs?: number;
   swipeCooldownMs?: number;
-  onSwipeLeft?: ((info: { dx: number; dy: number }) => void) | null;
-  onSwipeRight?: ((info: { dx: number; dy: number }) => void) | null;
+  onSwipeLeft?: ((info: { dx: number; dy: number; velocity?: number }) => void) | null;
+  onSwipeRight?: ((info: { dx: number; dy: number; velocity?: number }) => void) | null;
   onThumbsUp?: ((detail: any) => void) | null;
   onThumbsDown?: ((detail: any) => void) | null;
   onPeace?: ((detail: any) => void) | null;
@@ -126,6 +150,10 @@ export interface HandNavOptions {
   dwellTimeMs?: number;
   dwellRadiusPx?: number;
   enabledGestures?: HandNavEnabledGestures;
+  calibration?: HandNavCalibration | null;
+  calibrationStorageKey?: string;
+  calibrationStageMinMs?: number;
+  calibrationMoveMinMs?: number;
   notifications?: boolean;
   notificationAfterMs?: number;
   noHandIgnoreAfterMs?: number;
@@ -147,7 +175,15 @@ export declare class HandNav {
   toggleOverlay(force?: boolean): this;
   setVideoVisible(visible: boolean): this;
   toggleVideo(force?: boolean): this;
+  setMirror(mirror: boolean): this;
+  toggleMirror(force?: boolean): this;
   setNotificationsVisible(visible: boolean): this;
+  startCalibration(options?: { save?: boolean }): this;
+  stopCalibration(): this;
+  resetCalibration(): this;
+  saveCalibration(calibration?: HandNavCalibration): this;
+  getCalibration(): HandNavCalibration | null;
+  applyCalibration(calibration: HandNavCalibration, options?: { silent?: boolean }): this;
   on<T = any>(type: string, handler: (event: HandNavEvent<T>) => void): () => void;
   off<T = any>(type: string, handler: (event: HandNavEvent<T>) => void): void;
 }

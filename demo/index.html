@@ -141,6 +141,80 @@
     .kbd { padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: #fff; }
     .meter { height: 14px; background: rgba(255,255,255,.1); border-radius: 999px; overflow: hidden; }
     .meter > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--green), var(--accent)); transition: width .12s linear; }
+
+    input[type="range"] { accent-color: var(--green); cursor: pointer; height: 42px; }
+    .test-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 16px; }
+    .range-stack { display: grid; gap: 12px; margin-top: 12px; }
+    .range-row { display: grid; grid-template-columns: 90px 1fr 54px; gap: 10px; align-items: center; color: var(--muted); }
+    .drop-zone { min-height: 120px; display: grid; place-items: center; border: 1px dashed rgba(255,255,255,.28); border-radius: 18px; background: rgba(255,255,255,.06); }
+    .draw-pad { height: 170px; border-radius: 18px; border: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.22); position: relative; overflow: hidden; touch-action: none; }
+    .draw-pad::before { content: "Pinch-drag here"; position: absolute; left: 12px; top: 10px; color: rgba(255,255,255,.38); font-weight: 800; font-size: .85rem; }
+    .draw-dot { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 999px; background: var(--green); box-shadow: 0 0 18px rgba(85,214,190,.65); pointer-events: none; }
+    .drag-pill { width: 82px; height: 82px; border-radius: 24px; display: grid; place-items: center; background: linear-gradient(135deg, var(--accent), var(--green)); box-shadow: 0 20px 50px rgba(58,134,255,.28); font-size: 2rem; user-select: none; }
+    .cal-modal { position: fixed; inset: 0; z-index: 2147483000; display: none; place-items: center; padding: 18px; background: radial-gradient(circle at 50% 20%, rgba(58,134,255,.22), transparent 32rem), rgba(2,6,14,.78); backdrop-filter: blur(18px); }
+    .cal-modal.open { display: grid; }
+    .cal-shell { width: min(1120px, 100%); max-height: min(860px, calc(100vh - 28px)); display: grid; grid-template-columns: minmax(320px, .95fr) minmax(360px, 1.05fr); gap: 18px; padding: 18px; border-radius: 34px; border: 1px solid rgba(255,255,255,.16); background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06)); box-shadow: 0 40px 120px rgba(0,0,0,.5); }
+    .cal-info, .cal-camera { border-radius: 26px; border: 1px solid rgba(255,255,255,.13); background: rgba(0,0,0,.22); padding: 22px; overflow: hidden; }
+    .cal-info { display: grid; align-content: space-between; gap: 18px; }
+    .cal-title { font-size: clamp(2rem, 5vw, 4.4rem); letter-spacing: -.07em; line-height: .9; margin: 0; }
+    .cal-copy { color: var(--muted); font-size: 1.04rem; }
+    .cal-steps { display: grid; gap: 10px; }
+    .cal-step { padding: 12px; border-radius: 18px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.10); }
+    .cal-step.active { border-color: rgba(58,134,255,.85); background: rgba(58,134,255,.16); }
+    .cal-step.done { border-color: rgba(85,214,190,.75); background: rgba(85,214,190,.12); }
+    .cal-step-head { display: flex; justify-content: space-between; gap: 12px; font-weight: 900; }
+    .cal-bar { margin-top: 9px; height: 10px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
+    .cal-bar > div { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), var(--accent)); transition: width .18s ease; }
+    .cal-animation { height: 240px; display: grid; place-items: center; position: relative; overflow: hidden; border-radius: 26px; background: radial-gradient(circle, rgba(58,134,255,.22), transparent 60%), rgba(255,255,255,.05); }
+    .cal-ring { position: absolute; width: 170px; height: 170px; border-radius: 999px; border: 2px solid rgba(255,255,255,.16); animation: pulseRing 2.2s infinite ease-out; }
+    .cal-ring:nth-child(2) { animation-delay: .5s; }
+    .cal-hand { position: relative; z-index: 1; font-size: 6rem; filter: drop-shadow(0 22px 45px rgba(0,0,0,.38)); animation: floatHand 1.8s infinite ease-in-out; }
+    .cal-hand.pinch { animation: pinchDemo 1.4s infinite ease-in-out; }
+    .cal-hand.move { animation: moveDemo 1.7s infinite ease-in-out; }
+    .cal-camera { position: relative; min-height: 520px; display: grid; align-content: end; }
+    .cal-camera-frame { position: absolute; inset: 22px 22px 104px; border-radius: 28px; overflow: hidden; border: 1px solid rgba(255,255,255,.22); background: #02040a; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+    .cal-camera-frame::after { content: "Camera preview + live hand overlay"; position: absolute; left: 14px; top: 14px; padding: 7px 10px; border-radius: 99px; background: rgba(0,0,0,.45); color: #eaf3ff; font-size: .82rem; font-weight: 800; }
+    .cal-frame-guide { position: absolute; inset: 12%; border: 2px dashed rgba(85,214,190,.55); border-radius: 32px; box-shadow: 0 0 80px rgba(85,214,190,.08); }
+    .cal-actions { position: relative; z-index: 3; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .cal-hint { color: var(--muted); }
+    body.calibrating { overflow: hidden; }
+    body.calibrating [data-handnav="root"] { z-index: 2147483002 !important; }
+    body.calibrating [data-handnav="cursor"], body.calibrating [data-handnav="notice"] { z-index: 2147483004 !important; }
+    @keyframes pulseRing { 0% { transform: scale(.65); opacity: .75; } 100% { transform: scale(1.55); opacity: 0; } }
+    @keyframes floatHand { 0%,100% { transform: translateY(7px) rotate(-4deg); } 50% { transform: translateY(-7px) rotate(4deg); } }
+    @keyframes pinchDemo { 0%,100% { transform: scale(1) rotate(-6deg); } 50% { transform: scale(.82) rotate(6deg); } }
+    @keyframes moveDemo { 0%,100% { transform: translateX(-54px) rotate(-8deg); } 50% { transform: translateX(54px) rotate(8deg); } }
+    @media (max-width: 1040px) { .test-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } .cal-shell { grid-template-columns: 1fr; overflow: auto; } .cal-camera { min-height: 360px; } }
+
+    /* Refined calibration modal layout */
+    .cal-modal { padding: clamp(10px, 2vw, 22px); }
+    .cal-shell { width: min(1180px, 100%); height: min(780px, calc(100vh - 24px)); grid-template-columns: minmax(310px, 420px) minmax(420px, 1fr); gap: 16px; padding: 16px; align-items: stretch; }
+    .cal-info, .cal-camera { border-radius: 24px; padding: clamp(16px, 2vw, 22px); }
+    .cal-title { font-size: clamp(2rem, 4vw, 3.8rem); }
+    .cal-copy { margin: 8px 0 0; font-size: .98rem; }
+    .cal-animation { height: clamp(150px, 22vh, 210px); }
+    .cal-ring { display: block; border-color: rgba(85,214,190,.42); box-shadow: 0 0 35px rgba(85,214,190,.16); }
+    .cal-hand { font-size: clamp(4rem, 8vw, 5.8rem); }
+    .cal-steps { max-height: 310px; overflow: auto; padding-right: 3px; }
+    .cal-step { padding: 10px 12px; }
+    .cal-step small { display: block; color: var(--muted); margin-top: 3px; font-weight: 600; }
+    .cal-camera { min-height: 0; grid-template-rows: 1fr auto; }
+    .cal-camera-frame { position: relative; inset: auto; height: 100%; min-height: 360px; max-height: 610px; }
+    .cal-camera-frame video { display: none; }
+    .cal-camera-frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+    .cal-frame-guide { display: none; }
+    .cal-camera-frame::after { z-index: 4; }
+    .cal-actions { margin-top: 14px; }
+    body.calibrating video[data-handnav="video"] { opacity: 0 !important; width: 1px !important; height: 1px !important; }
+    body.calibrating [data-handnav="root"] canvas { display: none !important; }
+    .cal-complete { display: none; position: absolute; inset: 16px; z-index: 8; place-items: center; text-align: center; border-radius: 28px; background: radial-gradient(circle at 50% 35%, rgba(85,214,190,.28), transparent 22rem), rgba(3,8,18,.92); border: 1px solid rgba(85,214,190,.35); }
+    .cal-complete.show { display: grid; }
+    .cal-complete h2 { font-size: clamp(2.2rem, 6vw, 5rem); margin: 0 0 10px; }
+    .cal-check { width: 96px; height: 96px; display: grid; place-items: center; margin: 0 auto 18px; border-radius: 999px; background: linear-gradient(135deg, var(--green), var(--accent)); font-size: 3rem; box-shadow: 0 24px 70px rgba(85,214,190,.3); animation: completePop .48s ease both; }
+    @keyframes completePop { from { transform: scale(.72); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @media (max-width: 900px) { .cal-shell { grid-template-columns: 1fr; height: min(860px, calc(100vh - 20px)); overflow: auto; } .cal-camera-frame { min-height: 280px; height: 42vh; } .cal-steps { max-height: none; } }
+    @media (max-width: 560px) { .cal-shell { padding: 10px; border-radius: 24px; } .cal-info, .cal-camera { border-radius: 18px; padding: 14px; } .cal-actions { align-items: stretch; flex-direction: column; } .cal-actions > div { justify-content: stretch !important; } .cal-actions button { justify-content: center; width: 100%; } }
+
     footer { color: var(--muted); padding: 42px 0 80px; }
     @media (max-width: 940px) { .hero, .grid-3, .grid-2, .toggles { grid-template-columns: 1fr; } header { grid-template-columns: 1fr; } .controls { justify-content: flex-start; } }
     @media (max-width: 560px) { main { width: min(100% - 20px, 1220px); } button, a.button { padding: 9px 11px; font-size: .92rem; } .badge { display: none; } .stats { grid-template-columns: 1fr; } .hero-card, .panel { border-radius: 20px; } }
@@ -156,9 +230,48 @@
       <button id="toggleOverlay">Overlay: on</button>
       <button id="toggleVideo">Camera: on</button>
       <button id="toggleNotices">Notices: on</button>
+      <button id="calibrate">Calibrate</button>
+      <button id="resetCalibration">Reset cal</button>
       <button id="stop" class="danger">Stop</button>
     </div>
   </header>
+
+  <div id="calModal" class="cal-modal" aria-hidden="true">
+    <div class="cal-shell" role="dialog" aria-modal="true" aria-labelledby="calTitle">
+      <section class="cal-info">
+        <div>
+          <p class="badge">Personal calibration</p>
+          <h2 id="calTitle" class="cal-title">Teach HandNav your hand.</h2>
+          <p id="calInstruction" class="cal-copy">Follow the animated guide. Each step takes a moment so you do not accidentally skip it.</p>
+        </div>
+        <div class="cal-animation">
+          <div class="cal-ring"></div><div class="cal-ring"></div>
+          <div id="calHandDemo" class="cal-hand">🖐️</div>
+        </div>
+        <div class="cal-steps" id="calSteps">
+          <div class="cal-step active" data-cal-step="openPalmCenter"><div class="cal-step-head"><span>1. Open palm</span><span id="cal-openPalmCenter-pct">0%</span></div><small>Face camera, fingers open</small><div class="cal-bar"><div id="cal-openPalmCenter-bar"></div></div></div>
+          <div class="cal-step" data-cal-step="openPalmLeft"><div class="cal-step-head"><span>2. Palm left</span><span id="cal-openPalmLeft-pct">0%</span></div><small>Turn hand slightly left</small><div class="cal-bar"><div id="cal-openPalmLeft-bar"></div></div></div>
+          <div class="cal-step" data-cal-step="openPalmRight"><div class="cal-step-head"><span>3. Palm right</span><span id="cal-openPalmRight-pct">0%</span></div><small>Turn hand slightly right</small><div class="cal-bar"><div id="cal-openPalmRight-bar"></div></div></div>
+          <div class="cal-step" data-cal-step="pinchCenter"><div class="cal-step-head"><span>4. Pinch</span><span id="cal-pinchCenter-pct">0%</span></div><small>Touch thumb and index</small><div class="cal-bar"><div id="cal-pinchCenter-bar"></div></div></div>
+          <div class="cal-step" data-cal-step="pinchLeft"><div class="cal-step-head"><span>5. Pinch left</span><span id="cal-pinchLeft-pct">0%</span></div><small>Pinch at a slight left angle</small><div class="cal-bar"><div id="cal-pinchLeft-bar"></div></div></div>
+          <div class="cal-step" data-cal-step="pinchRight"><div class="cal-step-head"><span>6. Pinch right</span><span id="cal-pinchRight-pct">0%</span></div><small>Pinch at a slight right angle</small><div class="cal-bar"><div id="cal-pinchRight-bar"></div></div></div>
+          <div class="cal-step" data-cal-step="moveRange"><div class="cal-step-head"><span>7. Move range</span><span id="cal-moveRange-pct">0%</span></div><small>Move hand left and right</small><div class="cal-bar"><div id="cal-moveRange-bar"></div></div></div>
+        </div>
+      </section>
+      <section class="cal-camera">
+        <div id="calComplete" class="cal-complete"><div><div class="cal-check">✓</div><h2>Calibration complete</h2><p class="cal-copy">Your personalized hand thresholds are saved. Exiting in a moment…</p><p><button id="calDoneClose" class="primary">Exit now</button></p></div></div>
+        <div class="cal-camera-frame"><video id="calVideo" playsinline muted></video><canvas id="calOverlay"></canvas><div class="cal-frame-guide"></div></div>
+        <div class="cal-actions">
+          <span id="calHint" class="cal-hint">Live camera preview will appear here after Start.</span>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end">
+            <button id="calStart" class="primary">Start calibration</button>
+            <button id="calMirror">Mirror: on</button>
+            <button id="calClose">Close</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
 
   <main>
     <section class="hero">
@@ -208,7 +321,7 @@
 
     <section class="panel">
       <h2>Test subjects</h2>
-      <div class="grid-3">
+      <div class="test-grid">
         <div class="play-card">
           <h3>Clickable UI</h3>
           <p>Pinch or dwell over these controls.</p>
@@ -220,6 +333,21 @@
           <h3>Held gesture actions</h3>
           <p>Hold thumbs up/down, peace, open palm, or fist for about 0.7 seconds.</p>
           <div id="heldAction" class="value">Waiting…</div>
+        </div>
+        <div class="play-card">
+          <h3>Drag/range test</h3>
+          <p>Pinch the knob or track, then move left/right. Native range inputs are supported with a fallback.</p>
+          <div class="range-stack">
+            <label class="range-row"><span>Volume</span><input class="drag-range" id="dragSlider" type="range" min="0" max="100" value="50" /><strong id="dragValue">50</strong></label>
+            <label class="range-row"><span>Zoom</span><input class="drag-range" id="zoomSlider" type="range" min="1" max="20" value="10" /><strong id="zoomValue">10</strong></label>
+            <label class="range-row"><span>Brush</span><input class="drag-range" id="brushSlider" type="range" min="1" max="50" value="12" /><strong id="brushValue">12</strong></label>
+          </div>
+        </div>
+        <div class="play-card">
+          <h3>Canvas-style drag</h3>
+          <p>Pinch and drag inside this pad. This tests custom pointermove handlers.</p>
+          <div id="drawPad" class="draw-pad"></div>
+          <p><button id="clearDraw">Clear pad</button></p>
         </div>
         <div class="play-card">
           <h3>Hover target</h3>
@@ -327,6 +455,181 @@
     }
     renderDiagnostics();
 
+
+    const calModal = $('calModal');
+    const calVideo = $('calVideo');
+    const calOverlay = $('calOverlay');
+    const calCtx = calOverlay.getContext('2d');
+    let calExitTimer = 0;
+    let calRaf = 0;
+    let latestCalibrationDetail = null;
+    const calStepText = {
+      openPalmCenter: 'Hold your open palm centered in the guide. Keep it steady until the bar fills.',
+      openPalmLeft: 'Turn your open palm slightly left. This helps HandNav understand angle changes.',
+      openPalmRight: 'Turn your open palm slightly right. Keep it visible and steady.',
+      pinchCenter: 'Pinch thumb and index together in the center of the camera frame.',
+      pinchLeft: 'Keep pinching, then rotate your hand slightly left.',
+      pinchRight: 'Keep pinching, then rotate your hand slightly right.',
+      moveRange: 'Move your hand left and right across the guide. Stay inside the camera frame.'
+    };
+    const calEmoji = {
+      openPalmCenter: '🖐️', openPalmLeft: '🖐️', openPalmRight: '🖐️',
+      pinchCenter: '🤏', pinchLeft: '🤏', pinchRight: '🤏', moveRange: '👋'
+    };
+    function openCalibrationModal() {
+      calModal.classList.add('open');
+      calModal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('calibrating');
+      $('calComplete').classList.remove('show');
+      resetCalibrationUi();
+      attachCalibrationVideo();
+      startCalibrationRenderLoop();
+    }
+    function closeCalibrationModal() {
+      clearTimeout(calExitTimer);
+      calModal.classList.remove('open');
+      calModal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('calibrating');
+      nav.stopCalibration();
+      cancelAnimationFrame(calRaf);
+      calRaf = 0;
+      latestCalibrationDetail = null;
+      calCtx.clearRect(0, 0, calOverlay.width, calOverlay.height);
+      if (nav.state === 'running') nav.setVideoVisible(true);
+    }
+    function applyCalibrationMirror() {
+      $('calMirror').textContent = `Mirror: ${nav.options.mirror ? 'on' : 'off'}`;
+      calCtx.clearRect(0, 0, calOverlay.width, calOverlay.height);
+    }
+    function attachCalibrationVideo() {
+      if (nav.video?.srcObject) calVideo.srcObject = nav.video.srcObject;
+      applyCalibrationMirror();
+      calVideo.play().catch(() => {});
+      nav.setVideoVisible(false);
+    }
+    function resetCalibrationUi() {
+      document.querySelectorAll('[id^="cal-"][id$="-bar"]').forEach((bar) => bar.style.width = '0%');
+      document.querySelectorAll('[id^="cal-"][id$="-pct"]').forEach((pct) => pct.textContent = '0%');
+      document.querySelectorAll('.cal-step').forEach((el) => { el.classList.remove('active', 'done'); });
+      setCalibrationStage('openPalmCenter');
+      $('calHint').textContent = 'Press Start calibration when your hand is visible.';
+      $('calComplete').classList.remove('show');
+    }
+    function setCalibrationStage(stage) {
+      const order = ['openPalmCenter','openPalmLeft','openPalmRight','pinchCenter','pinchLeft','pinchRight','moveRange'];
+      document.querySelectorAll('.cal-step').forEach((el) => {
+        el.classList.toggle('active', el.dataset.calStep === stage);
+        el.classList.toggle('done', order.indexOf(el.dataset.calStep) < order.indexOf(stage));
+      });
+      $('calInstruction').textContent = calStepText[stage] || 'Calibration complete.';
+      $('calHandDemo').textContent = calEmoji[stage] || '✅';
+      $('calHandDemo').className = `cal-hand ${stage.includes('pinch') ? 'pinch' : stage === 'moveRange' ? 'move' : ''}`;
+      document.querySelector(`.cal-step[data-cal-step="${stage}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    function updateCalibrationProgress(stage, progress) {
+      const pct = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+      const bar = $(`cal-${stage}-bar`);
+      const label = $(`cal-${stage}-pct`);
+      if (bar) bar.style.width = `${pct}%`;
+      if (label) label.textContent = `${pct}%`;
+    }
+    function showCalibrationComplete() {
+      $('calComplete').classList.add('show');
+      $('calHint').textContent = 'Calibration complete.';
+      calExitTimer = setTimeout(closeCalibrationModal, 3600);
+    }
+    function drawCalibrationOverlay(detail) {
+      if (!calModal.classList.contains('open') || !detail?.hand?.landmarks?.length) return;
+      latestCalibrationDetail = detail;
+    }
+    function startCalibrationRenderLoop() {
+      cancelAnimationFrame(calRaf);
+      const render = () => {
+        if (!calModal.classList.contains('open')) return;
+        renderCalibrationFrame();
+        calRaf = requestAnimationFrame(render);
+      };
+      render();
+    }
+    function calibrationCover(rect) {
+      const videoAspect = calVideo.videoWidth && calVideo.videoHeight ? calVideo.videoWidth / calVideo.videoHeight : 4 / 3;
+      const frameAspect = rect.width / rect.height;
+      let drawW = rect.width, drawH = rect.height, offX = 0, offY = 0;
+      if (videoAspect > frameAspect) {
+        drawH = rect.height;
+        drawW = rect.height * videoAspect;
+        offX = (rect.width - drawW) / 2;
+      } else {
+        drawW = rect.width;
+        drawH = rect.width / videoAspect;
+        offY = (rect.height - drawH) / 2;
+      }
+      return { drawW, drawH, offX, offY };
+    }
+    function renderCalibrationFrame() {
+      const rect = calOverlay.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const dpr = window.devicePixelRatio || 1;
+      const nextW = Math.round(rect.width * dpr);
+      const nextH = Math.round(rect.height * dpr);
+      if (calOverlay.width !== nextW || calOverlay.height !== nextH) {
+        calOverlay.width = nextW;
+        calOverlay.height = nextH;
+      }
+      const ctx = calCtx;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      const { drawW, drawH, offX, offY } = calibrationCover(rect);
+
+      // MediaPipe's own demos avoid overlay drift by drawing the camera frame and landmarks into the same canvas.
+      if (calVideo.readyState >= 2) {
+        ctx.save();
+        if (nav.options.mirror) {
+          ctx.translate(rect.width, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(calVideo, rect.width - offX - drawW, offY, drawW, drawH);
+        } else {
+          ctx.drawImage(calVideo, offX, offY, drawW, drawH);
+        }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#02040a';
+        ctx.fillRect(0, 0, rect.width, rect.height);
+      }
+
+      // Frame guide, drawn in-canvas so it always matches the preview.
+      ctx.save();
+      ctx.strokeStyle = 'rgba(85,214,190,.55)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 8]);
+      const gx = rect.width * 0.12, gy = rect.height * 0.12, gw = rect.width * 0.76, gh = rect.height * 0.76;
+      ctx.beginPath();
+      ctx.roundRect?.(gx, gy, gw, gh, 28) || ctx.rect(gx, gy, gw, gh);
+      ctx.stroke();
+      ctx.restore();
+
+      const detail = latestCalibrationDetail;
+      if (!detail?.hand?.landmarks?.length) return;
+      const map = (p) => ({ x: offX + (nav.options.mirror ? 1 - p.x : p.x) * drawW, y: offY + p.y * drawH });
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(85,214,190,.96)';
+      ctx.lineWidth = 3.5;
+      const con = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+      for (const [a,b] of con) {
+        const pa = map(detail.hand.landmarks[a]); const pb = map(detail.hand.landmarks[b]);
+        ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,255,255,.96)';
+      ctx.strokeStyle = 'rgba(8,17,31,.8)';
+      ctx.lineWidth = 1.5;
+      for (const p of detail.hand.landmarks) {
+        const q = map(p); ctx.beginPath(); ctx.arc(q.x, q.y, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     function renderSlide() {
       document.querySelectorAll('.slide').forEach((el, i) => el.classList.toggle('active', i === slide));
       document.querySelectorAll('.dot').forEach((el, i) => el.classList.toggle('active', i === slide));
@@ -335,6 +638,27 @@
     function prev() { slide = (slide + 3) % 4; renderSlide(); log('previous slide'); }
     $('next').addEventListener('click', next);
     $('prev').addEventListener('click', prev);
+    document.querySelectorAll('.drag-range').forEach((range) => {
+      const valueEl = $(range.id.replace('Slider', 'Value'));
+      range.addEventListener('input', (e) => {
+        if (valueEl) valueEl.textContent = e.target.value;
+        log(`${range.id}: ${e.target.value}`);
+      });
+    });
+    const drawPad = $('drawPad');
+    let drawing = false;
+    function drawDot(e) {
+      const rect = drawPad.getBoundingClientRect();
+      const dot = document.createElement('span');
+      dot.className = 'draw-dot';
+      dot.style.left = `${e.clientX - rect.left}px`;
+      dot.style.top = `${e.clientY - rect.top}px`;
+      drawPad.appendChild(dot);
+    }
+    drawPad.addEventListener('pointerdown', (e) => { drawing = true; drawDot(e); });
+    drawPad.addEventListener('pointermove', (e) => { if (drawing || e.buttons) drawDot(e); });
+    drawPad.addEventListener('pointerup', () => { drawing = false; });
+    $('clearDraw').addEventListener('click', () => { drawPad.innerHTML = ''; });
 
     const nav = new HandNav({
       showVideo: true,
@@ -369,6 +693,7 @@
       if (e.detail.state === 'requesting') setNotice('warn', 'Requesting camera permission… If no prompt appears, check the browser address bar/site settings or open the deployed URL in a normal tab, not an iframe preview.');
       if (e.detail.state === 'ready') setNotice('ok', 'Camera is running. Hand tracking model is loading/running.');
     });
+    nav.on('hand', (e) => drawCalibrationOverlay(e.detail));
     nav.on('gesture', (e) => {
       gestureEl.textContent = e.detail.name;
       pointerEl.textContent = `${Math.round(e.detail.pointer.x)}, ${Math.round(e.detail.pointer.y)}`;
@@ -379,6 +704,25 @@
     nav.on('click', (e) => log(`pinch click: ${e.detail.element?.tagName || 'unknown'}`));
     nav.on('swipeleft', () => log('swipe left'));
     nav.on('swiperight', () => log('swipe right'));
+    nav.on('calibration', (e) => {
+      log(`calibration: ${e.detail.state}${e.detail.stage ? ` / ${e.detail.stage}` : ''}`);
+      if (e.detail.stage) setCalibrationStage(e.detail.stage);
+      if (e.detail.state === 'progress') {
+        updateCalibrationProgress(e.detail.stage, e.detail.progress);
+        if (e.detail.accepted) $('calHint').textContent = 'Good — keep holding steady.';
+        else $('calHint').textContent = 'Not detected yet. Match the guide and stay inside the dashed frame.';
+      }
+      if (e.detail.state === 'complete') {
+        document.querySelectorAll('[id^="cal-"][id$="-bar"]').forEach((bar) => bar.style.width = '100%');
+        document.querySelectorAll('[id^="cal-"][id$="-pct"]').forEach((pct) => pct.textContent = '100%');
+        document.querySelectorAll('.cal-step').forEach((el) => { el.classList.remove('active'); el.classList.add('done'); });
+        setNotice('ok', 'Calibration complete and saved.');
+        showCalibrationComplete();
+      }
+    });
+    nav.on('dragstart', () => log('drag start'));
+    nav.on('dragend', () => log('drag end'));
+    nav.on('doubleclick', () => log('double pinch / double click'));
     nav.on('error', (e) => {
       console.error(e.detail);
       statusEl.textContent = 'Error';
@@ -410,6 +754,30 @@
       nav.setNotificationsVisible(!nav.options.notifications);
       $('toggleNotices').textContent = `Notices: ${nav.options.notifications ? 'on' : 'off'}`;
       log(`notices ${nav.options.notifications ? 'on' : 'off'}`);
+    });
+    $('calibrate').addEventListener('click', openCalibrationModal);
+    $('calStart').addEventListener('click', async () => {
+      try {
+        if (nav.state !== 'running') await nav.start();
+        resetCalibrationUi();
+        $('calHint').textContent = 'Follow the guide. The progress bars fill only when the gesture is detected steadily.';
+        nav.startCalibration({ save: true });
+      } catch (err) {
+        setNotice('error', err.message || String(err));
+        $('calHint').textContent = 'Camera could not start. Check browser permission and HTTPS.';
+      }
+    });
+    $('calMirror').addEventListener('click', () => {
+      nav.toggleMirror();
+      applyCalibrationMirror();
+      setNotice('warn', `Camera mirror ${nav.options.mirror ? 'enabled' : 'disabled'}. Use the setting where overlay sits directly on your fingers.`);
+    });
+    $('calClose').addEventListener('click', closeCalibrationModal);
+    $('calDoneClose').addEventListener('click', closeCalibrationModal);
+    calModal.addEventListener('click', (e) => { if (e.target === calModal) closeCalibrationModal(); });
+    $('resetCalibration').addEventListener('click', () => {
+      nav.resetCalibration();
+      setNotice('warn', 'Calibration reset. Defaults are active.');
     });
     $('stop').addEventListener('click', () => nav.stop());
 

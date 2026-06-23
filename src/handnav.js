@@ -41,6 +41,9 @@ const DEFAULTS = {
   performanceMode: "auto", // "auto", "performance", "balanced", or "quality"
   advancedStabilization: "auto", // "auto", true, or false
   landmarkSmoothing: 0.42,
+  cursorFilter: "adaptive", // "adaptive" or "lerp"
+  predictiveTracking: true,
+  trackingLossPredictionMs: 160,
   smoothing: 0.35,
   handConfidenceThreshold: 0.45,
   minHandSizePx: 42,
@@ -52,8 +55,15 @@ const DEFAULTS = {
   pointerSize: 26,
   pointerZIndex: 2147483647,
   click: true,
+  drag: true,
   pinchThreshold: 0.35,
   pinchReleaseThreshold: 0.48,
+  pinchConfirmMs: 35,
+  longPinchMs: 650,
+  doublePinchMs: 360,
+  dragStartThresholdPx: 16,
+  dragOnLongPinch: false,
+  pointerDownOnPinch: false,
   clickMaxTravelPx: 28,
   hoverClass: "handnav-hover",
   pressedClass: "handnav-pressed",
@@ -69,6 +79,7 @@ const DEFAULTS = {
   scrollMaxStepPx: 68,
   swipe: true,
   swipeThresholdPx: 160,
+  swipeVelocityThresholdPxS: 650,
   swipeMaxVerticalPx: 120,
   swipeWindowMs: 520,
   swipeCooldownMs: 900,
@@ -96,6 +107,10 @@ const DEFAULTS = {
     openPalm: true,
     fist: true
   },
+  calibration: null,
+  calibrationStorageKey: "handnav:calibration",
+  calibrationStageMinMs: 1500,
+  calibrationMoveMinMs: 2200,
   notifications: true,
   notificationAfterMs: 700,
   noHandIgnoreAfterMs: 2600,
@@ -184,6 +199,8 @@ export class HandNav {
     this.lastHovered = null;
     this.pinchDown = false;
     this.pinchStart = null;
+    this.pinchMachine = { state: "idle" };
+    this.lastClickAt = 0;
     this.lastScrollY = null;
     this.scrollSession = null;
     this.history = [];
@@ -199,6 +216,10 @@ export class HandNav {
     this.lostSince = null;
     this.notificationTimer = 0;
     this.stabilizedLandmarks = null;
+    this.pointerFilter = { initialized: false, x: this.pointer.x, y: this.pointer.y, vx: 0, vy: 0, lastAt: performance.now() };
+    this.calibrationSession = null;
+    this.calibration = this.options.calibration || this.loadCalibration();
+    if (this.calibration) this.applyCalibration(this.calibration, { silent: true });
 
     this.root = null;
     this.cursorEl = null;
@@ -326,6 +347,7 @@ export class HandNav {
     if ("overlay" in options) this.setOverlayVisible(!!options.overlay);
     if ("showVideo" in options) this.setVideoVisible(!!options.showVideo);
     if (options.videoPreview) this.applyVideoStyle();
+    if (options.calibration) this.applyCalibration(options.calibration, { silent: true });
     this.emit("options", { options: this.options });
     return this;
   }
@@ -362,19 +384,216 @@ export class HandNav {
     return this.setVideoVisible(visible);
   }
 
+  setMirror(mirror) {
+    this.options.mirror = !!mirror;
+    this.applyVideoStyle();
+    this.clearCanvas();
+    this.emit("mirror", { mirror: this.options.mirror });
+    return this;
+  }
+
+  toggleMirror(force) {
+    const mirror = typeof force === "boolean" ? force : !this.options.mirror;
+    return this.setMirror(mirror);
+  }
+
   resetInteractionState() {
+    this.releasePinchDueToLoss();
     this.pinchDown = false;
     this.pinchStart = null;
+    this.pinchMachine = { state: "idle" };
+    this.lastClickAt = 0;
     this.lastScrollY = null;
     this.scrollSession = null;
     this.history = [];
     this.dwell = null;
     this.stabilizedLandmarks = null;
+    this.pointerFilter = { initialized: false, x: this.pointer.x, y: this.pointer.y, vx: 0, vy: 0, lastAt: performance.now() };
     this.gestureHolds.clear();
     this.lastHovered?.classList?.remove(this.options.hoverClass);
     this.lastHovered = null;
     this.cursorEl?.classList.remove(this.options.pressedClass);
     this.styleCursorPressed(false);
+  }
+
+  loadCalibration() {
+    try {
+      if (!this.options.calibrationStorageKey || typeof localStorage === "undefined") return null;
+      const raw = localStorage.getItem(this.options.calibrationStorageKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  saveCalibration(calibration = this.calibration) {
+    if (!calibration) return this;
+    try {
+      if (this.options.calibrationStorageKey && typeof localStorage !== "undefined") {
+        localStorage.setItem(this.options.calibrationStorageKey, JSON.stringify(calibration));
+      }
+    } catch {}
+    return this;
+  }
+
+  resetCalibration() {
+    this.calibration = null;
+    this.calibrationSession = null;
+    try {
+      if (this.options.calibrationStorageKey && typeof localStorage !== "undefined") localStorage.removeItem(this.options.calibrationStorageKey);
+    } catch {}
+    this.emit("calibration", { state: "reset" });
+    return this;
+  }
+
+  applyCalibration(calibration, { silent = false } = {}) {
+    if (!calibration) return this;
+    this.calibration = calibration;
+    const patch = {};
+    if (Number.isFinite(calibration.pinchThreshold)) patch.pinchThreshold = calibration.pinchThreshold;
+    if (Number.isFinite(calibration.pinchReleaseThreshold)) patch.pinchReleaseThreshold = calibration.pinchReleaseThreshold;
+    if (Number.isFinite(calibration.minHandSizePx)) patch.minHandSizePx = calibration.minHandSizePx;
+    this.options = deepMerge(this.options, patch);
+    if (!silent) this.emit("calibration", { state: "applied", calibration });
+    return this;
+  }
+
+  startCalibration({ save = true } = {}) {
+    const stages = this.getCalibrationStages();
+    this.calibrationSession = {
+      save,
+      stages,
+      stageIndex: 0,
+      stage: stages[0].id,
+      stageStartedAt: performance.now(),
+      samples: {},
+      palmSamples: [],
+      pinchSamples: [],
+      moveSamples: []
+    };
+    this.notify(stages[0].message, "info");
+    this.emit("calibration", { state: "started", stage: stages[0].id, stageInfo: stages[0], stageIndex: 0, totalStages: stages.length });
+    return this;
+  }
+
+  getCalibrationStages() {
+    return [
+      { id: "openPalmCenter", kind: "openPalm", label: "Open palm", angle: "center", message: "Calibration: open palm, centered" },
+      { id: "openPalmLeft", kind: "openPalm", label: "Palm left side", angle: "left", message: "Calibration: open palm on the left side" },
+      { id: "openPalmRight", kind: "openPalm", label: "Palm right side", angle: "right", message: "Calibration: open palm on the right side" },
+      { id: "pinchCenter", kind: "pinch", label: "Pinch", angle: "center", message: "Calibration: pinch thumb and index" },
+      { id: "pinchLeft", kind: "pinch", label: "Pinch left side", angle: "left", message: "Calibration: pinch on the left side" },
+      { id: "pinchRight", kind: "pinch", label: "Pinch right side", angle: "right", message: "Calibration: pinch on the right side" },
+      { id: "moveRange", kind: "move", label: "Movement range", angle: "move", message: "Calibration: move your hand left and right" }
+    ];
+  }
+
+  calibrationStageMatches(stage, gesture, wrist) {
+    const normalizedX = wrist.x / Math.max(1, window.innerWidth);
+    const inZone = stage.angle === "left"
+      ? normalizedX < 0.43
+      : stage.angle === "right"
+        ? normalizedX > 0.57
+        : normalizedX >= 0.32 && normalizedX <= 0.68;
+    if (stage.kind === "openPalm") return gesture.openPalm && inZone;
+    if (stage.kind === "pinch") return (gesture.pinching || gesture.pinchRatio < this.options.pinchReleaseThreshold) && inZone;
+    if (stage.kind === "move") return true;
+    return false;
+  }
+
+  stopCalibration() {
+    this.calibrationSession = null;
+    this.hideNotice();
+    this.emit("calibration", { state: "stopped" });
+    return this;
+  }
+
+  getCalibration() {
+    return this.calibration;
+  }
+
+  updateCalibration(gesture, landmarks) {
+    const session = this.calibrationSession;
+    if (!session) return;
+    const now = performance.now();
+    const stage = session.stages[session.stageIndex];
+    const palmWidthPx = this.handSizePx(landmarks);
+    const wrist = this.toScreen(landmarks[LANDMARK.WRIST]);
+    const stageAge = now - session.stageStartedAt;
+    const samples = session.samples[stage.id] ||= [];
+
+    let accepted = this.calibrationStageMatches(stage, gesture, wrist);
+    if (stage.kind === "openPalm") {
+      if (accepted) {
+        samples.push({ palmWidthPx, x: wrist.x, t: now });
+        session.palmSamples.push(palmWidthPx);
+      }
+    } else if (stage.kind === "pinch") {
+      if (accepted) {
+        samples.push({ pinchRatio: gesture.pinchRatio, palmWidthPx, x: wrist.x, t: now });
+        session.pinchSamples.push(gesture.pinchRatio);
+      }
+    } else if (stage.kind === "move") {
+      samples.push({ x: wrist.x, t: now });
+      session.moveSamples.push(wrist.x);
+    }
+
+    let progress;
+    if (stage.kind === "move") {
+      const range = session.moveSamples.length ? Math.max(...session.moveSamples) - Math.min(...session.moveSamples) : 0;
+      progress = clamp(range / (window.innerWidth * 0.30), 0, 1);
+    } else {
+      const sampleProgress = samples.length / 28;
+      const timeProgress = accepted ? stageAge / this.options.calibrationStageMinMs : 0;
+      progress = clamp(Math.min(sampleProgress, timeProgress), 0, 1);
+    }
+
+    this.notify(stage.message, "info");
+    this.emit("calibration", {
+      state: "progress",
+      stage: stage.id,
+      stageInfo: stage,
+      stageIndex: session.stageIndex,
+      totalStages: session.stages.length,
+      progress,
+      accepted
+    });
+
+    const done = stage.kind === "move"
+      ? session.moveSamples.length > 8 && (Math.max(...session.moveSamples) - Math.min(...session.moveSamples)) > window.innerWidth * 0.30 && stageAge > this.options.calibrationMoveMinMs
+      : samples.length >= 28 && stageAge > this.options.calibrationStageMinMs;
+
+    if (!done) return;
+
+    session.stageIndex += 1;
+    if (session.stageIndex < session.stages.length) {
+      const next = session.stages[session.stageIndex];
+      session.stage = next.id;
+      session.stageStartedAt = now;
+      this.notify(next.message, "info");
+      this.emit("calibration", { state: "stage", stage: next.id, stageInfo: next, stageIndex: session.stageIndex, totalStages: session.stages.length });
+      return;
+    }
+
+    const avgPalm = session.palmSamples.reduce((a, b) => a + b, 0) / Math.max(1, session.palmSamples.length);
+    const sortedPinches = session.pinchSamples.slice().sort((a, b) => a - b);
+    const lowPinch = sortedPinches[Math.floor(sortedPinches.length * 0.2)] ?? Math.min(...session.pinchSamples);
+    const range = session.moveSamples.length ? Math.max(...session.moveSamples) - Math.min(...session.moveSamples) : 0;
+    const calibration = {
+      createdAt: Date.now(),
+      palmWidthPx: avgPalm,
+      naturalPinchRatio: lowPinch,
+      movementRangePx: range,
+      pinchThreshold: clamp(lowPinch + 0.08, 0.18, 0.42),
+      pinchReleaseThreshold: clamp(lowPinch + 0.18, 0.32, 0.58),
+      minHandSizePx: clamp(avgPalm * 0.38, 34, 90)
+    };
+    this.applyCalibration(calibration, { silent: true });
+    if (session.save) this.saveCalibration(calibration);
+    this.calibrationSession = null;
+    this.notify("Calibration complete", "info");
+    window.setTimeout(() => this.hideNotice(), 1500);
+    this.emit("calibration", { state: "complete", calibration, totalStages: session.stages.length });
   }
 
   setNotificationsVisible(visible) {
@@ -431,6 +650,7 @@ export class HandNav {
     }
 
     this.video.setAttribute("playsinline", "");
+    this.video.setAttribute("data-handnav", "video");
     this.video.muted = true;
     if (this.createdVideo && !this.video.parentNode) document.body.appendChild(this.video);
     this.applyVideoStyle();
@@ -624,6 +844,8 @@ export class HandNav {
       this.setCursorVisible(false);
       this.lastScrollY = null;
       this.scrollSession = null;
+      if (this.predictPointerWhenLost()) return;
+      this.releasePinchDueToLoss();
       this.stabilizedLandmarks = null;
       this.handleNoHands(this.lastDetectionMeta);
       this.emit("lost", this.lastDetectionMeta);
@@ -640,6 +862,7 @@ export class HandNav {
     this.draw(hand.landmarks);
 
     const gesture = this.classify(hand.landmarks);
+    this.updateCalibration(gesture, hand.landmarks);
     const payload = { ...gesture, hand, pointer: { ...this.pointer } };
     this.emit("hand", payload);
     this.emit("gesture", payload);
@@ -749,14 +972,65 @@ export class HandNav {
 
   updatePointer(landmarks) {
     const tip = this.toScreen(landmarks[LANDMARK.INDEX_TIP]);
-    const t = clamp(this.options.smoothing, 0, 1);
+    const now = performance.now();
+    const filter = this.pointerFilter;
+    const dt = Math.max(8, Math.min(80, now - (filter.lastAt || now))) / 1000;
     this.pointer.rawX = tip.x;
     this.pointer.rawY = tip.y;
-    this.pointer.x = lerp(this.pointer.x, tip.x, t);
-    this.pointer.y = lerp(this.pointer.y, tip.y, t);
+
+    if (!filter.initialized) {
+      filter.initialized = true;
+      filter.x = tip.x;
+      filter.y = tip.y;
+      filter.vx = 0;
+      filter.vy = 0;
+      filter.lastAt = now;
+    }
+
+    const instantVx = (tip.x - filter.x) / dt;
+    const instantVy = (tip.y - filter.y) / dt;
+    filter.vx = lerp(filter.vx || 0, instantVx, 0.32);
+    filter.vy = lerp(filter.vy || 0, instantVy, 0.32);
+
+    const speed = Math.hypot(filter.vx, filter.vy);
+    const base = clamp(this.options.smoothing, 0.05, 0.95);
+    const t = this.options.cursorFilter === "adaptive"
+      ? clamp(base + speed / 2800, base, 0.86)
+      : base;
+
+    filter.x = lerp(filter.x, tip.x, t);
+    filter.y = lerp(filter.y, tip.y, t);
+    filter.lastAt = now;
+
+    this.pointer.x = filter.x;
+    this.pointer.y = filter.y;
+    this.moveCursorElement();
+  }
+
+  moveCursorElement() {
     if (this.cursorEl) {
       this.cursorEl.style.transform = `translate(${this.pointer.x}px, ${this.pointer.y}px)`;
     }
+  }
+
+  predictPointerWhenLost() {
+    if (!this.options.predictiveTracking || !this.pointerFilter?.initialized || !this.lastHandSeenAt) return false;
+    const now = performance.now();
+    const lostFor = now - this.lastHandSeenAt;
+    if (lostFor > this.options.trackingLossPredictionMs) return false;
+    const dt = Math.max(0, Math.min(0.05, (now - this.pointerFilter.lastAt) / 1000));
+    const decay = Math.max(0, 1 - lostFor / this.options.trackingLossPredictionMs);
+    this.pointerFilter.x = clamp(this.pointerFilter.x + this.pointerFilter.vx * dt * decay, 0, window.innerWidth);
+    this.pointerFilter.y = clamp(this.pointerFilter.y + this.pointerFilter.vy * dt * decay, 0, window.innerHeight);
+    this.pointerFilter.vx *= 0.82;
+    this.pointerFilter.vy *= 0.82;
+    this.pointerFilter.lastAt = now;
+    this.pointer.x = this.pointerFilter.x;
+    this.pointer.y = this.pointerFilter.y;
+    this.setCursorVisible(true);
+    this.moveCursorElement();
+    this.emit("prediction", { pointer: { ...this.pointer }, lostFor });
+    return true;
   }
 
   classify(lm) {
@@ -784,10 +1058,24 @@ export class HandNav {
       ? pinchRatio < this.options.pinchReleaseThreshold
       : pinchRatio < this.options.pinchThreshold;
 
+    const pinchConfidence = pinching
+      ? clamp((this.options.pinchReleaseThreshold - pinchRatio) / Math.max(0.001, this.options.pinchReleaseThreshold - this.options.pinchThreshold), 0, 1)
+      : clamp(1 - Math.abs(pinchRatio - this.options.pinchThreshold) / Math.max(0.001, this.options.pinchThreshold), 0, 1);
+    const confidence = {
+      pinch: pinchConfidence,
+      twoFinger: twoFinger ? 0.86 : 0,
+      openPalm: openPalm ? clamp(extendedCount / 4, 0, 1) : 0,
+      fist: fist ? 0.82 : 0,
+      thumbsUp: thumbsUp ? 0.82 : 0,
+      thumbsDown: thumbsDown ? 0.82 : 0
+    };
+
     return {
       name: pinching ? "pinch" : thumbsUp ? "thumbsUp" : thumbsDown ? "thumbsDown" : peace ? "peace" : openPalm ? "openPalm" : fist ? "fist" : pointing ? "point" : "hand",
+      palmWidth,
       pinchRatio,
       pinching,
+      confidence,
       fingers,
       thumbVerticalUp,
       thumbVerticalDown,
@@ -888,40 +1176,155 @@ export class HandNav {
   }
 
   handlePinch(gesture) {
-    if (gesture.pinching && !this.pinchDown) {
-      this.pinchDown = true;
-      this.pinchStart = { x: this.pointer.x, y: this.pointer.y, target: this.clickTarget() };
-      this.cursorEl?.classList.add(this.options.pressedClass);
-      this.styleCursorPressed(true);
-      this.dispatchMouse("pointerdown", this.pinchStart.target);
-      this.dispatchMouse("mousedown", this.pinchStart.target);
-      this.emit("pinchstart", { element: this.pinchStart.target, pointer: { ...this.pointer } });
+    const now = performance.now();
+    const sm = this.pinchMachine || { state: "idle" };
+
+    if (gesture.pinching && sm.state === "idle") {
+      const target = this.clickTarget();
+      this.pinchMachine = {
+        state: "candidate",
+        startedAt: now,
+        target,
+        startX: this.pointer.x,
+        startY: this.pointer.y,
+        dragging: false,
+        pointerDown: false
+      };
+      this.emit("pinchcandidate", { element: target, pointer: { ...this.pointer }, confidence: gesture.confidence?.pinch ?? 0 });
       return;
     }
 
-    if (!gesture.pinching && this.pinchDown) {
-      const target = this.clickTarget();
-      const travel = Math.hypot(this.pointer.x - this.pinchStart.x, this.pointer.y - this.pinchStart.y);
-      this.dispatchMouse("pointerup", target);
-      this.dispatchMouse("mouseup", target);
+    if (gesture.pinching && sm.state === "candidate" && now - sm.startedAt >= this.options.pinchConfirmMs) {
+      sm.state = "active";
+      sm.pointerDown = false;
+      this.pinchDown = true;
+      this.pinchStart = { x: sm.startX, y: sm.startY, target: sm.target, startedAt: sm.startedAt };
+      this.cursorEl?.classList.add(this.options.pressedClass);
+      this.styleCursorPressed(true);
+      if (this.options.pointerDownOnPinch) {
+        sm.pointerDown = true;
+        this.dispatchMouse("pointerdown", sm.target, { buttons: 1 });
+        this.dispatchMouse("mousedown", sm.target, { buttons: 1 });
+      }
+      this.emit("pinchstart", { element: sm.target, pointer: { ...this.pointer }, confidence: gesture.confidence?.pinch ?? 0 });
+      return;
+    }
+
+    if (gesture.pinching && sm.state === "active") {
+      const travel = Math.hypot(this.pointer.x - sm.startX, this.pointer.y - sm.startY);
+      const duration = now - sm.startedAt;
+      if (!sm.dragging && this.options.drag && (travel >= this.options.dragStartThresholdPx || (this.options.dragOnLongPinch && duration >= this.options.longPinchMs))) {
+        sm.dragging = true;
+        if (!sm.pointerDown) {
+          sm.pointerDown = true;
+          this.dispatchMouse("pointerdown", sm.target, { buttons: 1 });
+          this.dispatchMouse("mousedown", sm.target, { buttons: 1 });
+        }
+        this.emit("dragstart", { element: sm.target, pointer: { ...this.pointer }, travel, duration });
+      }
+      if (sm.pointerDown) {
+        this.dispatchMouse("pointermove", sm.target, { buttons: 1 });
+        this.dispatchMouse("mousemove", sm.target, { buttons: 1 });
+      }
+      this.applyNativeDragFallback(sm.target);
+      if (sm.dragging) this.emit("drag", { element: sm.target, pointer: { ...this.pointer }, travel, duration });
+      return;
+    }
+
+    if (!gesture.pinching && sm.state === "candidate") {
+      const travel = Math.hypot(this.pointer.x - sm.startX, this.pointer.y - sm.startY);
+      const duration = now - sm.startedAt;
       if (travel <= this.options.clickMaxTravelPx) {
-        this.dispatchMouse("click", target);
+        const target = sm.target || this.clickTarget();
+        this.dispatchMouse("click", target, { buttons: 0 });
         if (isInputLike(target)) target.focus({ preventScroll: true });
-        this.emit("click", { element: target, pointer: { ...this.pointer } });
+        this.lastClickAt = now;
+        this.emit("click", { element: target, pointer: { ...this.pointer }, travel, duration, quick: true, confidence: gesture.confidence?.pinch ?? 0 });
+      } else {
+        this.emit("pinchcancel", { pointer: { ...this.pointer } });
+      }
+      this.pinchMachine = { state: "idle" };
+      return;
+    }
+
+    if (!gesture.pinching && sm.state === "active") {
+      const upTarget = this.clickTarget();
+      const target = sm.target || upTarget;
+      const travel = Math.hypot(this.pointer.x - sm.startX, this.pointer.y - sm.startY);
+      const duration = now - sm.startedAt;
+      if (sm.pointerDown) {
+        this.dispatchMouse("pointerup", target, { buttons: 0 });
+        this.dispatchMouse("mouseup", target, { buttons: 0 });
+      }
+
+      const shouldClick = !sm.dragging && travel <= this.options.clickMaxTravelPx;
+      if (shouldClick) {
+        const clickTarget = sm.target || upTarget;
+        this.dispatchMouse("click", clickTarget, { buttons: 0 });
+        if (now - this.lastClickAt <= this.options.doublePinchMs) {
+          this.dispatchMouse("dblclick", clickTarget, { buttons: 0 });
+          this.emit("doubleclick", { element: clickTarget, pointer: { ...this.pointer }, travel, duration });
+        }
+        this.lastClickAt = now;
+        if (isInputLike(clickTarget)) clickTarget.focus({ preventScroll: true });
+        this.emit("click", { element: clickTarget, pointer: { ...this.pointer }, travel, duration, confidence: gesture.confidence?.pinch ?? 0 });
+      }
+      if (sm.dragging) {
+        this.applyNativeDragFallback(target, true);
+        this.emit("dragend", { element: target, pointer: { ...this.pointer }, travel, duration });
       }
       this.cursorEl?.classList.remove(this.options.pressedClass);
       this.styleCursorPressed(false);
       this.pinchDown = false;
       this.pinchStart = null;
-      this.emit("pinchend", { element: target, pointer: { ...this.pointer }, travel });
+      this.pinchMachine = { state: "idle" };
+      this.emit("pinchend", { element: target, pointer: { ...this.pointer }, travel, duration });
     }
+  }
+
+  applyNativeDragFallback(target, final = false) {
+    if (!target || target.tagName !== "INPUT" || target.type !== "range") return;
+    const rect = target.getBoundingClientRect();
+    if (!rect.width) return;
+    const min = Number(target.min || 0);
+    const max = Number(target.max || 100);
+    const step = target.step === "any" ? 0 : Number(target.step || 1);
+    const ratio = clamp((this.pointer.x - rect.left) / rect.width, 0, 1);
+    let value = min + ratio * (max - min);
+    if (step > 0) value = Math.round(value / step) * step;
+    value = clamp(value, min, max);
+    if (String(target.value) !== String(value)) {
+      target.value = String(value);
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    if (final) target.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  releasePinchDueToLoss() {
+    const sm = this.pinchMachine;
+    if (!sm || sm.state === "idle") return;
+    if (sm.state === "active" && sm.target) {
+      if (sm.pointerDown) {
+        this.dispatchMouse("pointerup", sm.target, { buttons: 0 });
+        this.dispatchMouse("mouseup", sm.target, { buttons: 0 });
+      }
+      if (sm.dragging) this.emit("dragend", { element: sm.target, pointer: { ...this.pointer }, cancelled: true });
+      this.emit("pinchend", { element: sm.target, pointer: { ...this.pointer }, cancelled: true });
+    } else {
+      this.emit("pinchcancel", { pointer: { ...this.pointer }, reason: "tracking-lost" });
+    }
+    this.cursorEl?.classList.remove(this.options.pressedClass);
+    this.styleCursorPressed(false);
+    this.pinchDown = false;
+    this.pinchStart = null;
+    this.pinchMachine = { state: "idle" };
   }
 
   clickTarget() {
     return document.elementFromPoint(this.pointer.x, this.pointer.y) || document.body;
   }
 
-  dispatchMouse(type, target) {
+  dispatchMouse(type, target, overrides = {}) {
     if (!target) return;
     const eventInit = {
       bubbles: true,
@@ -931,10 +1334,12 @@ export class HandNav {
       screenX: this.pointer.x,
       screenY: this.pointer.y,
       view: window,
-      buttons: this.pinchDown ? 1 : 0,
+      buttons: overrides.buttons ?? (this.pinchDown ? 1 : 0),
+      button: overrides.button ?? 0,
       pointerId: 991,
       pointerType: "hand",
-      isPrimary: true
+      isPrimary: true,
+      ...overrides
     };
     const EventCtor = type.startsWith("pointer") && window.PointerEvent ? PointerEvent : MouseEvent;
     target.dispatchEvent(new EventCtor(type, eventInit));
@@ -1030,18 +1435,20 @@ export class HandNav {
     const last = this.history[this.history.length - 1];
     const dx = last.x - first.x;
     const dy = last.y - first.y;
-    if (Math.abs(dx) < this.options.swipeThresholdPx || Math.abs(dy) > this.options.swipeMaxVerticalPx) return;
+    const dt = Math.max(1, last.t - first.t);
+    const velocity = Math.abs(dx) / (dt / 1000);
+    if (Math.abs(dx) < this.options.swipeThresholdPx || velocity < this.options.swipeVelocityThresholdPxS || Math.abs(dy) > this.options.swipeMaxVerticalPx) return;
 
     this.lastSwipeAt = now;
     this.history = [];
     if (dx < 0) {
-      if (typeof this.options.onSwipeLeft === "function") this.options.onSwipeLeft({ dx, dy });
-      else window.dispatchEvent(new CustomEvent("handnav:swipeleft", { detail: { dx, dy } }));
-      this.emit("swipeleft", { dx, dy });
+      if (typeof this.options.onSwipeLeft === "function") this.options.onSwipeLeft({ dx, dy, velocity });
+      else window.dispatchEvent(new CustomEvent("handnav:swipeleft", { detail: { dx, dy, velocity } }));
+      this.emit("swipeleft", { dx, dy, velocity });
     } else {
-      if (typeof this.options.onSwipeRight === "function") this.options.onSwipeRight({ dx, dy });
-      else window.dispatchEvent(new CustomEvent("handnav:swiperight", { detail: { dx, dy } }));
-      this.emit("swiperight", { dx, dy });
+      if (typeof this.options.onSwipeRight === "function") this.options.onSwipeRight({ dx, dy, velocity });
+      else window.dispatchEvent(new CustomEvent("handnav:swiperight", { detail: { dx, dy, velocity } }));
+      this.emit("swiperight", { dx, dy, velocity });
     }
   }
 

@@ -1,7 +1,5 @@
 # HandNav.js
 
-Try the demo at: https://handnav-js.zixu159.workers.dev/demo/
-
 Drop-in hand-tracking navigation for websites and web apps. HandNav turns a webcam into a gesture controller:
 
 - **Point** with your index fingertip to move a virtual cursor.
@@ -303,6 +301,8 @@ nav.setOverlayVisible(true);    // show/hide hand landmark canvas overlay
 nav.toggleOverlay();            // toggle the hand tracking overlay
 nav.setVideoVisible(true);      // show/hide small webcam preview frame
 nav.toggleVideo();              // toggle webcam preview frame
+nav.setMirror(false);           // disable coordinate/video mirroring, useful for rear cameras or already-mirrored systems
+nav.toggleMirror();
 nav.setOptions({ overlay: false, showVideo: true });
 
 nav.on(type, fn);               // subscribe to events; returns unsubscribe function
@@ -347,6 +347,9 @@ const nav = new HandNav({
   performanceMode: 'auto',        // 'auto', 'performance', 'balanced', 'quality'
   advancedStabilization: 'auto',  // enables extra landmark smoothing when device can handle it
   landmarkSmoothing: 0.42,
+  cursorFilter: 'adaptive',
+  predictiveTracking: true,
+  trackingLossPredictionMs: 160,
 
   // Noise filtering / false-positive reduction
   handConfidenceThreshold: 0.45,
@@ -357,8 +360,15 @@ const nav = new HandNav({
 
   // Click
   click: true,
+  drag: true,
   pinchThreshold: 0.35,
   pinchReleaseThreshold: 0.48,
+  pinchConfirmMs: 55,
+  longPinchMs: 420,
+  doublePinchMs: 360,
+  dragStartThresholdPx: 16,
+  dragOnLongPinch: false,
+  pointerDownOnPinch: false,
   clickMaxTravelPx: 28,
 
   // Scroll
@@ -376,6 +386,7 @@ const nav = new HandNav({
   // Swipe
   swipe: true,
   swipeThresholdPx: 160,
+  swipeVelocityThresholdPxS: 650,
   swipeWindowMs: 520,
   swipeCooldownMs: 900,
   onSwipeLeft: () => {},
@@ -405,6 +416,12 @@ const nav = new HandNav({
     openPalm: true,
     fist: true
   },
+
+  // Calibration
+  calibration: null,
+  calibrationStorageKey: 'handnav:calibration',
+  calibrationStageMinMs: 1500,
+  calibrationMoveMinMs: 2200,
 
   // Optional non-intrusive user guidance
   notifications: true,
@@ -484,6 +501,133 @@ const nav = new HandNav({
 
 Avoid CSS that transforms large layout containers on `.handnav-hover`; transforms on hovered sections can make the page appear to shake while hand scrolling. Use `outline` or `box-shadow` instead. HandNav also disables hand hover while two-finger scrolling is active.
 
+
+
+## Interaction quality architecture
+
+HandNav now includes the high-impact interaction improvements needed for practical app control:
+
+### Hand-size normalized thresholds
+
+Pinch detection uses a normalized ratio:
+
+```js
+pinchRatio = distance(thumbTip, indexTip) / palmWidth
+```
+
+This is more consistent across camera resolutions, user distance, and different hand sizes than raw pixel thresholds.
+
+### Pinch state machine
+
+Pinch is handled with explicit state transitions instead of one-frame triggers:
+
+```text
+idle → candidate → active → release
+```
+
+This enables cleaner lifecycle events:
+
+```js
+nav.on('pinchcandidate', () => {});
+nav.on('pinchstart', () => {});
+nav.on('pinchend', () => {});
+nav.on('pinchcancel', () => {});
+```
+
+Short pinch can click, long pinch can drag, and a quick repeated pinch can emit `doubleclick`.
+
+### Native-style drag support
+
+When `drag: true`, HandNav dispatches pointer/mouse movement while pinched:
+
+```text
+pinch confirmed → pointerdown / mousedown
+move while pinched → pointermove / mousemove
+release → pointerup / mouseup
+```
+
+Useful for sliders, drawing canvases, maps, and custom drag interfaces. Browser-native controls can reject synthetic drag events in some cases, so HandNav includes a fallback for `input[type="range"]` that updates the value and emits `input`/`change` while pinch-dragging. To keep button clicking reliable, long-hold-to-drag is disabled by default, drag starts from movement instead, and `pointerdown` is deferred until drag begins unless `pointerDownOnPinch` is explicitly enabled.
+
+```js
+const nav = new HandNav({
+  drag: true,
+  pinchConfirmMs: 55,
+  longPinchMs: 420,
+  dragStartThresholdPx: 16,
+  dragOnLongPinch: false,
+  pointerDownOnPinch: false
+});
+```
+
+### Cursor filtering and short-term prediction
+
+Cursor movement supports velocity-aware adaptive filtering and short-term prediction when landmarks disappear briefly:
+
+```js
+const nav = new HandNav({
+  cursorFilter: 'adaptive',
+  predictiveTracking: true,
+  trackingLossPredictionMs: 160,
+  smoothing: 0.35
+});
+```
+
+This reduces jitter without making the cursor feel too laggy.
+
+### Calibration flow
+
+Run a short user calibration flow:
+
+```js
+await nav.start();
+nav.startCalibration({ save: true });
+
+nav.on('calibration', (event) => {
+  console.log(event.detail.state, event.detail.stage, event.detail.calibration);
+});
+```
+
+Flow:
+
+```text
+show open palm → pinch thumb/index → move hand left/right
+```
+
+The demo implements this as a full-screen calibration assistant with a scaled live camera preview, direct hand overlay on the preview, animated gesture guide, and per-step progress bars. It collects multiple views: open palm center/left/right, pinch center/left/right, then left-right movement range. Progress now advances only when the requested gesture is actually detected in the requested zone; time alone cannot complete a stage. On completion, the modal switches to a clean complete screen and exits automatically after a few seconds unless the user exits manually.
+
+Collected values are used to derive personalized thresholds such as `pinchThreshold`, `pinchReleaseThreshold`, and `minHandSizePx`. Calibration is saved to `localStorage` by default using `calibrationStorageKey`.
+
+```js
+nav.resetCalibration();
+nav.getCalibration();
+nav.applyCalibration(savedCalibration);
+```
+
+---
+
+
+## Camera mirroring and overlay alignment
+
+Different environments handle camera mirroring differently:
+
+- many front-facing webcam previews are visually mirrored
+- some operating systems or camera drivers already mirror the feed
+- rear cameras usually should not be mirrored
+
+HandNav uses one `mirror` option for both pointer coordinates and preview alignment:
+
+```js
+const nav = new HandNav({
+  mirror: true // default for typical front-facing selfie webcams
+});
+
+nav.setMirror(false); // rear camera or already-mirrored system
+nav.toggleMirror();
+```
+
+During calibration, the demo includes a **Mirror: on/off** button. Use the setting where the live landmark overlay sits directly on top of your actual fingers. If the overlay appears horizontally reversed, toggle mirror. The calibration preview draws the camera frame and hand landmarks into the same canvas to avoid layer/CSS transform drift, following the same practical pattern used by MediaPipe demos.
+
+---
 
 ## User guidance notifications
 
